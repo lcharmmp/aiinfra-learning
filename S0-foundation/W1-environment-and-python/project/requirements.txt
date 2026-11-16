@@ -1,0 +1,12 @@
+# W1 的项目只使用 Python 标准库（json / pathlib / datetime / uuid / unittest），
+# 所以这里没有第三方依赖。
+#
+# 保留这个文件的原因：
+# 1. 让你养成“项目依赖要显式记录”的习惯。
+# 2. W2 开始会引入 pytest 等开发依赖，到时在这里追加并锁定版本。
+#
+# 使用方式（在 project/ 目录、已激活虚拟环境时）：
+#   python -m pip install -r requirements.txt
+#
+# 生成锁定版本（W2 会讲）：
+#   python -m pip freeze > requirements.lock.txt

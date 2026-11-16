@@ -1,0 +1,24 @@
+[
+  {
+    "experiment_id": "demo0001",
+    "name": "qwen2.5-7b-lr1e-4",
+    "model": "Qwen2.5-7B-Instruct",
+    "learning_rate": 0.0001,
+    "batch_size": 8,
+    "accuracy": 0.923,
+    "loss": 0.214,
+    "notes": "S0 示例数据：单卡 4090，3 个 epoch。",
+    "created_at": "2026-11-16T09:00:00"
+  },
+  {
+    "experiment_id": "demo0002",
+    "name": "qwen2.5-7b-awq-eval",
+    "model": "Qwen2.5-7B-Instruct-AWQ",
+    "learning_rate": 0.0001,
+    "batch_size": 16,
+    "accuracy": 0.917,
+    "loss": 0.226,
+    "notes": "S0 示例数据：AWQ 量化后的评测记录。",
+    "created_at": "2026-11-16T10:30:00"
+  }
+]
