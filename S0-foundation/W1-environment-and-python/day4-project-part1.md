@@ -78,7 +78,12 @@ errors.py  ->  models.py  ->  storage.py
 每完成一个文件：
 
 ```bash
+# git add：把文件加入暂存区
+# <file>：占位符，换成实际文件名，例如 exp_tracker/errors.py
 git add <file>
+
+# git commit：把暂存区生成一个提交
+# -m：message，直接在命令行提供提交说明
 git commit -m "feat: ..."
 ```
 
@@ -129,7 +134,11 @@ class ExperimentNotFoundError(ExperimentTrackerError):
 ### 3.5 提交
 
 ```bash
+# git add：把 errors.py 加入暂存区
 git add exp_tracker/errors.py
+
+# git commit：提交
+# -m：提交说明
 git commit -m "feat: add custom error hierarchy"
 ```
 
@@ -299,7 +308,11 @@ def __eq__(self, other):
 ### 4.7 提交
 
 ```bash
+# git add：把 models.py 加入暂存区
 git add exp_tracker/models.py
+
+# git commit：提交
+# -m：提交说明
 git commit -m "feat: implement Experiment model with validation"
 ```
 
@@ -438,7 +451,11 @@ def delete(self, experiment_id):
 ### 5.6 提交
 
 ```bash
+# git add：把 storage.py 加入暂存区
 git add exp_tracker/storage.py
+
+# git commit：提交
+# -m：提交说明
 git commit -m "feat: add JSON storage with atomic writes"
 ```
 
@@ -451,6 +468,10 @@ git commit -m "feat: add JSON storage with atomic writes"
 ```bash
 cd /root/aiinfra/S0-foundation/W1-environment-and-python/project
 
+# python3：调用解释器
+# -：从标准输入读取脚本（不是从文件读取）
+# <<'PY'：here-document，把接下来的内容作为标准输入，直到单独一行 PY
+#         'PY' 加引号表示不做变量替换
 python3 - <<'PY'
 # 用临时目录，不污染 data/experiments.json
 import tempfile
@@ -502,6 +523,10 @@ PY
 再跑模型/存储测试：
 
 ```bash
+# python3 -m：把后面的模块当脚本运行（-m = module）
+# unittest：Python 标准库测试框架
+# tests.test_models tests.test_storage：要运行的测试模块（点号是包路径）
+# -v：verbose，输出每个测试用例的名称和结果
 python3 -m unittest tests.test_models tests.test_storage -v
 ```
 
@@ -522,7 +547,11 @@ feat: add JSON storage with atomic writes
 检查：
 
 ```bash
+# git log：查看提交历史
+# --oneline：一行一个提交（短哈希 + 说明）
 git log --oneline
+
+# git status：查看当前分支和工作区状态
 git status
 ```
 

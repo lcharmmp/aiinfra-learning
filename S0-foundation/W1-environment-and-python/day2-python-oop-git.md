@@ -525,7 +525,14 @@ python3 examples/day2_oop_advanced.py
 ## 9. Git 深化：分支、合并、冲突、回滚、远程
 
 > 所有命令都在 `/root/aiinfra/S0-foundation/W1-environment-and-python/git-practice/` 里练。
-> 先确认这个目录已经是一个 Git 仓库（Day 1 初始化过）。如果没有：`git init -b main`。
+> 如果这个目录还不是 Git 仓库：
+>
+> ```bash
+> # git init：创建仓库
+> # -b main：初始分支名设为 main（-b = --initial-branch，Git 2.28+）
+> # 旧版 Git 用：git init && git branch -m main
+> git init -b main
+> ```
 
 ### 9.1 分支是什么
 
@@ -542,38 +549,86 @@ feature:                D --- E
 - 开发完合并回 `main`。
 - 出问题只影响分支，不影响主线。
 
+Git 里有一个特殊指针 `HEAD`，它指向“你当前所在的分支或提交”：
+
+```text
+HEAD -> main -> C
+```
+
+切换分支时，`HEAD` 会跟着移动；这也是为什么 `git status` 第一行会显示 `On branch main`。
+
 ### 9.2 创建、切换、合并
 
 ```bash
-# 确认当前在 main，且工作区干净
+# git status：查看当前分支，以及暂存区/工作区状态
 git status
+
+# git switch：切换分支
+# main：目标分支名
 git switch main
 
-# 新建并切换到 feature/add-summary 分支
+# git switch -c：创建新分支并立即切换
+# -c：--create，创建
+# feature/add-summary：新分支名
+#   / 只是命名分隔符，方便分类，不是目录
 git switch -c feature/add-summary
 
-# 在分支上改文件（这里用追加一行模拟）
+# echo：把字符串输出到标准输出
+# >> README.md：追加到文件末尾
+#   >  是覆盖写入（会清空原文件）
+#   >> 是追加写入（保留原内容）
 echo "# summary feature" >> README.md
 
-# 查看差异
+# git diff：显示“工作区 vs 暂存区”的差异
+# 也就是还没 git add 的改动
 git diff
 
-# 提交
+# git add：把文件加入暂存区
+# README.md：目标文件
 git add README.md
+
+# git commit：把暂存区生成一个提交
+# -m：直接在命令行给提交说明
 git commit -m "feat: add summary placeholder"
 
-# 切回 main
+# git switch main：切回 main 分支
 git switch main
 
-# 把分支合并进 main
+# git merge：把指定分支合并进“当前分支”
+# feature/add-summary：要合并的分支
+# 如果 main 在分叉后没有新提交，默认是 fast-forward（快进），
+# 只移动指针，不产生额外的 merge commit。
+# 想强制保留分支历史，用 --no-ff（no fast-forward）。
 git merge feature/add-summary
 
-# 查看分支图
+# git log：查看历史
+# --oneline：一行一个提交（短哈希 + 说明）
+# --graph：用 ASCII 字符画分支/合并图
+# --all：显示所有分支，不只当前分支
 git log --oneline --graph --all
 
-# 删除已合并的分支
+# git branch：管理分支
+# -d：--delete，删除已合并的分支；未合并时 Git 会拒绝
+#     强制删除用 -D（--delete --force），会丢提交，慎用
+# feature/add-summary：要删除的分支名
 git branch -d feature/add-summary
 ```
+
+分支命令参数速查：
+
+| 命令 | 参数解释 | 作用 |
+|---|---|---|
+| `git branch` | 无参数：列本地分支 | 查看分支 |
+| `git branch -a` | `-a`：--all，包含远程分支 | 查看所有分支 |
+| `git branch -v` | `-v`：verbose，显示每个分支最后一次提交 | 看分支状态 |
+| `git switch main` | `main`：目标分支 | 切换分支 |
+| `git switch -c new` | `-c`：--create，创建并切换 | 新建分支 |
+| `git merge feature` | `feature`：要合并进来的分支 | 合并到当前分支 |
+| `git merge --no-ff feature` | `--no-ff`：禁止快进，强制生成 merge commit | 保留分支历史 |
+| `git branch -d feature` | `-d`：--delete，仅删已合并分支 | 安全删除 |
+| `git branch -D feature` | `-D`：--delete --force，强制删除 | 丢弃未合并分支 |
+| `git branch -m new` | `-m`：--move，重命名当前分支 | 改分支名 |
+| `git branch -M main` | `-M`：--move --force，强制重命名 | 把 master 改成 main |
 
 ### 9.3 制造并解决一次冲突
 
@@ -581,24 +636,45 @@ git branch -d feature/add-summary
 
 ```bash
 # 1. 在 main 上创建练习文件
+# git switch main：确保当前在 main
 git switch main
+
+# cat > conflict.txt <<'TXT'：
+#   cat：输出标准输入/文件内容
+#   > conflict.txt：覆盖写入
+#   <<'TXT'：here-document，直到单独一行 TXT 结束
+#   'TXT' 加引号：不做变量替换
 cat > conflict.txt <<'TXT'
 line 1
 line 2
 line 3
 TXT
+
+# git add：暂存新文件
 git add conflict.txt
+
+# git commit：提交
+# -m：提交说明
 git commit -m "chore: add conflict practice file"
 
 # 2. 分支 A 改第二行
+# git switch -c：创建并切换到 feature/conflict-a
 git switch -c feature/conflict-a
+
+# sed：流编辑器
+# -i：in-place，直接改文件
+# 's/line 2/line 2 from A/'：把每行第一个 line 2 替换成 line 2 from A
 sed -i 's/line 2/line 2 from A/' conflict.txt
+
+# 暂存 + 提交
 git add conflict.txt
 git commit -m "feat: A changes line 2"
 
 # 3. 回到 main，创建分支 B 改同一行
 git switch main
 git switch -c feature/conflict-b
+
+# 同样用 sed -i 改同一行
 sed -i 's/line 2/line 2 from B/' conflict.txt
 git add conflict.txt
 git commit -m "feat: B changes line 2"
@@ -608,6 +684,7 @@ git switch main
 git merge feature/conflict-a
 
 # 5. 再合并 B（会冲突）
+# 因为 B 和 A 改了同一行，Git 无法自动决定保留哪个
 git merge feature/conflict-b
 ```
 
@@ -623,17 +700,22 @@ line 2 from B
 line 3
 ```
 
+- `<<<<<<< HEAD` 到 `=======` 之间：当前分支（main，已合并 A）的内容。
+- `=======` 到 `>>>>>>> feature/conflict-b` 之间：要合并进来的分支 B 的内容。
+
 解决：
 
 ```bash
-# 6. 手动编辑 conflict.txt，删掉 <<<<<<< ======= >>>>>>> 标记，保留你想要的最终内容
-#    例如保留 "line 2 from A and B" 或只保留一行
+# 6. 手动编辑 conflict.txt，删掉三个冲突标记，保留最终内容
+# nano：简单文本编辑器；Ctrl+O 保存，Ctrl+X 退出
 nano conflict.txt
 
-# 7. 标记为已解决
+# 7. git add：告诉 Git“这个文件的冲突已经解决”
+# 解决后必须 add，否则 Git 仍认为文件处于冲突状态
 git add conflict.txt
 
-# 8. 完成合并提交
+# 8. git commit：完成这次合并提交
+# -m：提交说明；这里没有 -m 的话 Git 会打开编辑器
 git commit -m "merge: resolve conflict between A and B"
 
 # 9. 确认历史
@@ -645,47 +727,86 @@ git log --oneline --graph --all
 - **不要慌**：冲突不是错误，是 Git 让你做决定。
 - 先理解两边各自改了什么，再决定最终内容。
 - 解决后必须 `git add`，再 `git commit`。
-- 如果搞砸了：`git merge --abort` 回到合并前。
+- 如果搞砸了：
+
+```bash
+# git merge --abort
+# --abort：中止当前这次 merge，把工作区恢复到合并前的状态
+git merge --abort
+```
 
 ### 9.4 撤销：`restore` / `reset` / `revert`
 
 先分清三个区域：
 
 ```text
-工作区  --git add-->  暂存区  --git commit-->  本地仓库
+工作区  --git add-->  暂存区/索引  --git commit-->  本地仓库
 ```
 
-| 命令 | 作用 | 危险度 | 典型场景 |
+| 命令 | 参数解释 | 作用 | 危险度 |
 |---|---|---|---|
-| `git restore <file>` | 丢弃工作区改动，回到暂存区版本 | 中（改动会没） | 改乱了，不想要了 |
-| `git restore --staged <file>` | 把文件移出暂存区，工作区不变 | 低 | `git add` 加错了 |
-| `git reset --soft HEAD~1` | 撤销最后一次 commit，改动保留在暂存区 | 低 | 提交信息写错，想重提 |
-| `git reset --mixed HEAD~1` | 撤销 commit，改动保留在工作区（默认） | 中 | 想重新挑文件提交 |
-| `git reset --hard HEAD~1` | 撤销 commit，并丢弃所有改动 | **高** | 确定不要这次提交和改动 |
-| `git revert <hash>` | 新建一个“反向提交”，抵消某次提交 | 低 | 已 push 的提交要撤销 |
+| `git restore file` | `restore`：恢复；`file`：目标文件 | 丢弃工作区改动，回到暂存区版本 | 中 |
+| `git restore --staged file` | `--staged`：只恢复暂存区 | 取消暂存，工作区不变 | 低 |
+| `git reset --soft HEAD~1` | `--soft`：只移动 HEAD，不动暂存区/工作区；`HEAD~1`：上一个提交 | 撤销 commit，改动留在暂存区 | 低 |
+| `git reset --mixed HEAD~1` | `--mixed`：默认模式，移动 HEAD 并重置暂存区，保留工作区 | 撤销 commit，改动留在工作区 | 中 |
+| `git reset --hard HEAD~1` | `--hard`：HEAD、暂存区、工作区全部重置 | 撤销 commit 并丢弃改动 | **高** |
+| `git revert <hash>` | `revert`：生成一个反向提交；`<hash>`：目标提交 | 安全撤销某次提交，不改历史 | 低 |
+
+关于 `HEAD~1`：
+
+- `HEAD`：当前提交。
+- `HEAD~1`：当前提交的第一个父提交，也就是“上一个提交”。
+- `HEAD^`：和 `HEAD~1` 等价。
+- `HEAD~2`：往上两个提交。
+- `HEAD~1` 不是“回退 1 个文件”，而是“回退 1 个提交”。
 
 练习：
 
 ```bash
 # 1. 改一个文件，然后丢弃工作区改动
+# echo "temporary" >> README.md：追加一行
 echo "temporary" >> README.md
+
+# git status：应看到 README.md 被修改
 git status
+
+# git restore README.md
+# restore：把工作区文件恢复到暂存区版本
+# README.md：目标文件
+# 注意：这会丢弃你刚才的改动
 git restore README.md
-git status                 # 应该干净
+
+# 再看状态，应该干净
+git status
 
 # 2. 改文件并 add，然后取消暂存
 echo "temporary 2" >> README.md
 git add README.md
+
+# git restore --staged README.md
+# --staged：只把文件从暂存区移出，工作区改动保留
 git restore --staged README.md
-git status                 # 改动还在工作区，但没暂存
-git restore README.md      # 再丢弃
+
+# git status：改动还在工作区，但没暂存
+git status
+
+# 再丢弃工作区改动
+git restore README.md
 
 # 3. 提交一次，然后用 soft reset 撤销提交但保留改动
 echo "soft reset practice" >> README.md
 git add README.md
 git commit -m "test: soft reset"
+
+# git reset --soft HEAD~1
+# --soft：只把当前分支指针回退到 HEAD~1
+#         暂存区和工作区都不动，所以改动仍然在暂存区
 git reset --soft HEAD~1
-git status                 # 改动仍在暂存区
+
+# 看状态：改动仍在暂存区
+git status
+
+# 取消暂存并丢弃改动
 git restore --staged README.md
 git restore README.md
 
@@ -693,8 +814,15 @@ git restore README.md
 echo "revert practice" >> README.md
 git add README.md
 git commit -m "test: revert practice"
+
+# git revert HEAD --no-edit
+# revert：创建一个“反向提交”，抵消 HEAD 的改动
+# HEAD：要撤销的提交
+# --no-edit：使用默认的 Revert 提交说明，不打开编辑器
 git revert HEAD --no-edit
-git log --oneline          # 会看到一条 Revert 提交
+
+# 查看历史：会看到一条 Revert 提交
+git log --oneline
 ```
 
 `reset --hard` 的警告：
@@ -702,24 +830,43 @@ git log --oneline          # 会看到一条 Revert 提交
 ```bash
 # 危险演示：先确认你没有未提交的改动
 git status
-# git reset --hard HEAD~1   # 不要随便执行；会永久丢弃工作区和暂存区改动
+
+# git reset --hard HEAD~1
+# --hard：把 HEAD、暂存区、工作区全部退回到 HEAD~1
+# 你未提交的改动会永久丢失（普通文件系统层面）
+# 不要随便执行
+# git reset --hard HEAD~1
 ```
 
 如果误操作了 `reset --hard`：
 
-- 立刻 `git reflog` 找到之前的 commit hash。
-- `git reset --hard <hash>` 恢复。
-- `reflog` 是本地操作记录，默认保留 90 天；越早恢复越好。
+```bash
+# git reflog：reference log，记录 HEAD 的移动历史
+# 找到误操作前的 commit hash
+git reflog
+
+# git reset --hard <hash>
+# 把 HEAD、暂存区、工作区恢复到那个提交
+git reset --hard <hash>
+```
+
+`reflog` 是本地操作记录，默认保留 90 天；越早恢复越好。
 
 ### 9.5 远程仓库：GitHub / Gitee
 
-#### 1）配置 SSH key
+> Day 1 的 4.7 节有更完整的“从零推送到 GitHub”图文步骤；这里补充命令参数和日常协作。
+
+#### 9.5.1 配置 SSH key
 
 ```bash
-# 如果 Day 1 已经生成过，可以复用；也可以单独生成一个给 GitHub 的
+# ssh-keygen：生成 SSH 密钥对
+# -t ed25519：密钥类型；ed25519 比 RSA 更短、更安全
+# -C "your_email@example.com"：给公钥加注释，方便辨认
+# 交互提示直接回车用默认路径；建议设置 passphrase
 ssh-keygen -t ed25519 -C "your_email@example.com"
 
-# 打印公钥，复制整行
+# cat：打印文件内容
+# ~/.ssh/id_ed25519.pub：公钥文件；.pub 结尾才是公钥
 cat ~/.ssh/id_ed25519.pub
 ```
 
@@ -729,64 +876,112 @@ cat ~/.ssh/id_ed25519.pub
 测试：
 
 ```bash
-# GitHub；看到 "successfully authenticated" 就成功
+# ssh：SSH 客户端
+# -T：不分配伪终端（test only）
+# git@github.com：GitHub 的 SSH 地址，用户名固定是 git
 ssh -T git@github.com
 
-# Gitee
+# Gitee 同理
 ssh -T git@gitee.com
 ```
 
-#### 2）创建远程仓库并推送
+看到 `successfully authenticated` 就成功。
+
+如果 22 端口被阻断：
+
+```bash
+# -p 443：连接 443 端口，绕过对 22 端口的封锁
+# git@ssh.github.com：GitHub 的 443 端口 SSH 入口
+ssh -T -p 443 git@ssh.github.com
+```
+
+#### 9.5.2 添加远程、首次推送
 
 在 GitHub/Gitee 网页上新建一个空仓库（不要勾选初始化 README），然后：
 
 ```bash
-# 回到你的本地仓库
+# cd：回到你的本地仓库
 cd /root/aiinfra/S0-foundation/W1-environment-and-python/git-practice
 
-# 添加远程地址；把 username/repo 换成你的
+# git remote：管理远程仓库
+# add：新增一个远程
+# origin：远程名，Git 约定俗成的默认名
+# git@github.com:username/repo.git：SSH 远程地址
+#   把 username/repo 换成你的用户名和仓库名
 git remote add origin git@github.com:username/aiinfra-git-practice.git
 
-# 查看远程
+# -v：verbose，显示 fetch 和 push 两个 URL
 git remote -v
 
-# 首次推送，并建立跟踪关系
+# git push：上传本地提交
+# -u：--set-upstream，把本地 main 和远程 origin/main 关联
+#     以后直接 git push / git pull 就行
+# origin：远程名
+# main：本地分支名
 git push -u origin main
 ```
 
 以后再推送：
 
 ```bash
+# 因为前面用了 -u，这里不需要再写 origin main
 git push
 ```
 
 拉取远程更新：
 
 ```bash
-# --rebase 让本地提交排在远程提交之后，历史更干净
+# git pull：fetch（下载远程提交）+ 整合
+# --rebase：把本地提交“重放”到远程最新提交之后
+#           不产生多余的 merge commit
 git pull --rebase
 ```
 
-#### 3）网络问题的现实处理
+#### 9.5.3 常见远程问题
 
-- GitHub 在国内可能慢/不稳；W1 可以先用 Gitee 练手，后面 S4 做开源 PR 时再处理 GitHub 网络。
-- 不要在主仓库里提交密钥、token、密码。
-- 如果远程地址写错：`git remote set-url origin <新地址>`。
-- 如果推送被拒（non-fast-forward）：先 `git pull --rebase`，解决冲突后再 `git push`；不要直接 `--force`。
+```bash
+# 远程地址写错：修改 URL
+# set-url：设置远程 URL
+git remote set-url origin git@github.com:username/new-repo.git
+
+# 查看远程名和 URL
+git remote -v
+
+# 删除一个远程（确认不再需要时）
+# remove：删除远程配置，不会删除远程仓库本身
+git remote remove origin
+```
+
+- GitHub 在国内可能慢/不稳；W1 可以先用 Gitee 练手。
+- 不要提交密钥、token、密码。
+- 推送被拒（non-fast-forward）：先 `git pull --rebase`，解决冲突后再 `git push`；不要直接 `--force`。
 
 ### 9.6 标签
 
 给 W1 项目打一个版本标签：
 
 ```bash
-# 创建带说明的标签
+# git tag：管理标签
+# -a：annotated，创建带说明的“附注标签”
+# v0.1.0：标签名
+# -m：标签说明
 git tag -a v0.1.0 -m "W1 experiment tracker v0.1.0"
 
-# 查看标签
+# 不带参数：列出所有标签
 git tag
 
-# 推送标签到远程
+# 查看某个标签的详细信息
+git show v0.1.0
+
+# git push：推送
+# origin：远程名
+# v0.1.0：标签名
+# 注意：普通 git push 不会自动推送标签，必须显式指定
 git push origin v0.1.0
+
+# 一次性推送所有标签（可选）
+# --tags：把所有标签都推到远程；不加则只推当前分支的提交
+git push --tags
 ```
 
 ### 9.7 Git 常见错误
@@ -794,12 +989,17 @@ git push origin v0.1.0
 | 现象 | 原因 | 解决 |
 |---|---|---|
 | `fatal: not a git repository` | 不在仓库目录 | `cd` 到仓库根目录 |
-| `Your local changes would be overwritten by merge` | 工作区有未提交改动 | 先 commit 或 `git stash`，再 merge |
+| `Your local changes would be overwritten by merge` | 工作区有未提交改动 | 先 `git commit`，或 `git stash`（暂存工作区改动）后再 merge |
 | `CONFLICT (content): Merge conflict in ...` | 两边改同一区域 | 手动解决，`git add`，`git commit` |
-| `fatal: refusing to merge unrelated histories` | 两个仓库历史无关 | 确认后用 `git pull --allow-unrelated-histories` |
+| `fatal: refusing to merge unrelated histories` | 两个仓库历史无关 | 确认后用 `git pull --allow-unrelated-histories`（允许合并无关历史） |
 | `Updates were rejected because the remote contains work...` | 远程有你本地没有的提交 | `git pull --rebase` 后再 push |
 | `detached HEAD` | 切到了某个 commit 而不是分支 | `git switch main` 或 `git switch -c new-branch` |
 | 误删分支 | 分支指针没了 | `git reflog` 找到 hash，`git branch <name> <hash>` |
+| `remote origin already exists` | 已经添加过同名远程 | `git remote set-url origin <新地址>` |
+| `Permission denied (publickey)` | 公钥没配好 | `ssh -T git@github.com` 测试；`ssh-add ~/.ssh/id_ed25519` |
+| `src refspec main does not match any` | 本地没有 main 分支/没有提交 | `git branch -M main`；确认有提交 |
+
+> 记忆：`-b` initial-branch，`-c` create，`-d` delete，`-D` force delete，`-m` message/move，`-M` force move，`-u` set-upstream，`-v` verbose，`--staged` 暂存区，`--hard` 连工作区一起重置。
 
 ---
 

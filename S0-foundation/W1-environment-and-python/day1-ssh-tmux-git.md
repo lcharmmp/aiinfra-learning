@@ -139,15 +139,18 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... aiinfra-w1
 最简单的方式（本地电脑执行）：
 
 ```bash
-# ssh-copy-id 会自动把公钥追加到服务器的 ~/.ssh/authorized_keys
-# 替换成你的服务器用户名和 IP
+# ssh-copy-id：把公钥追加到远程用户的 ~/.ssh/authorized_keys
+# -i ~/.ssh/id_ed25519.pub：指定要复制的公钥文件（-i = identity file）
+# root@1.2.3.4：远程用户名 root + @ + 服务器 IP
 ssh-copy-id -i ~/.ssh/id_ed25519.pub root@1.2.3.4
 ```
 
 第一次会要求输入服务器密码。成功后测试：
 
 ```bash
-# 这次应该不再问密码，直接登录
+# ssh：SSH 客户端
+# root@1.2.3.4：用户名 root + @ + 服务器 IP
+# 成功的话这次不再问密码
 ssh root@1.2.3.4
 ```
 
@@ -161,9 +164,17 @@ cat ~/.ssh/id_ed25519.pub
 ssh root@1.2.3.4
 
 # 3) 在服务器上创建目录并追加公钥
+# mkdir -p：创建目录；-p = --parents，父目录不存在时逐级创建，已存在不报错
 mkdir -p ~/.ssh
+
+# chmod 700：所有者可读(4)+写(2)+执行(1)=7，组和其他人无权限
 chmod 700 ~/.ssh
+
+# echo '...'：输出这一行
+# >> ~/.ssh/authorized_keys：追加写入；>> 是追加，> 会覆盖
 echo '把刚才复制的整行公钥粘贴到这里' >> ~/.ssh/authorized_keys
+
+# chmod 600：所有者可读(4)+写(2)=6，组和其他人无权限
 chmod 600 ~/.ssh/authorized_keys
 ```
 
@@ -171,7 +182,7 @@ chmod 600 ~/.ssh/authorized_keys
 
 - `>>` 是追加，不要用 `>` 覆盖，否则会把已有的公钥清空。
 - `~/.ssh` 权限必须是 `700`，`authorized_keys` 必须是 `600`，否则 SSH 会拒绝使用公钥。
-- 如果服务器是云厂商，检查安全组是否放行 22 端口；如果改了 SSH 端口，连接时加 `-p 端口号`。
+- 如果服务器是云厂商，检查安全组是否放行 22 端口；如果改了 SSH 端口，连接时加 `-p 端口号`（`-p` = port，小写；`scp` 里端口用大写 `-P`）。
 
 ### 2.5 配置 SSH 别名
 
@@ -179,6 +190,8 @@ chmod 600 ~/.ssh/authorized_keys
 
 ```bash
 # 创建或打开配置文件
+# nano：简单文本编辑器
+#   Ctrl+O 保存（然后回车确认文件名），Ctrl+X 退出
 # Linux/macOS
 nano ~/.ssh/config
 # Windows 可用记事本打开 C:\Users\你的用户名\.ssh\config
@@ -214,7 +227,9 @@ ssh aiinfra
 验证免密：
 
 ```bash
-# -v 打印详细握手过程；成功时最后会看到 Authentication succeeded (publickey)
+# -v：verbose，打印详细握手过程
+# 成功时最后会看到 Authentication succeeded (publickey)
+# 想看得更细可以用 -vv 或 -vvv（调试用，输出很长）
 ssh -v aiinfra
 ```
 
@@ -285,23 +300,28 @@ SSH 连接 ──▶ tmux server（在服务器上常驻）
 在服务器终端执行：
 
 ```bash
-# 查看 tmux 版本
+# tmux -V：-V = version，打印 tmux 版本（大写 V）
 tmux -V
 
-# 新建一个名为 w1 的会话
+# tmux new：新建一个会话
+# -s w1：-s = session name，会话名为 w1
 tmux new -s w1
 
-# 在会话里运行一个长任务
+# sleep 300：暂停 300 秒（5 分钟），模拟一个长任务
 sleep 300
 
 # 分离：先按 Ctrl+b，松开，再按 d
 # 回到普通 shell 后，查看会话列表
+
+# tmux ls：list sessions，列出所有会话
 tmux ls
 
-# 重新连接 w1
+# tmux attach：连接到一个已存在的会话
+# -t w1：-t = target session，目标会话名为 w1
 tmux attach -t w1
 
-# 彻底结束 w1（里面的进程也会结束）
+# tmux kill-session：彻底结束一个会话
+# -t w1：目标会话名；里面的进程也会结束
 tmux kill-session -t w1
 ```
 
@@ -388,55 +408,102 @@ tmux attach -t w1
 
 ### 4.2 配置身份
 
-在服务器执行（只需一次）：
+Git 每次提交都会记录“作者名”和“作者邮箱”。先配置一次，之后所有仓库共用。
 
 ```bash
-# 设置提交者名字；建议用真名或常用 ID
+# git config：读取或写入 Git 配置
+# --global：写入 ~/.gitconfig，对当前用户的所有仓库生效
+#           不加 --global 时，只写入当前仓库的 .git/config
+# user.name：配置项名称，提交记录里的作者名
+# "Your Name"：配置值
 git config --global user.name "Your Name"
 
-# 设置提交者邮箱；GitHub 可用 GitHub 提供的 noreply 邮箱
+# user.email：提交记录里的作者邮箱
+# GitHub 可以用“用户名@users.noreply.github.com”，避免公开真实邮箱
 git config --global user.email "you@example.com"
 
-# 查看当前配置
+# --list：列出当前生效的所有配置项
+# 不加 --global 则只列当前仓库的配置
 git config --global --list
+
+# 可选：设置以后 git init 的默认初始分支名
+# init.defaultBranch：配置项名称
+# main：值
+# 设置后，以后执行 git init（不带 -b）也会默认创建 main 分支
+git config --global init.defaultBranch main
 ```
 
-如果提示 `Please tell me who you are`，就是这两项没配。
+如果提示 `Please tell me who you are`，就是 `user.name` 和 `user.email` 没配。
+
+---
 
 ### 4.3 在练习目录完成第一次提交
 
-我们专门准备了 `git-practice/`，先在这里练，不污染主项目：
+我们专门准备了 `git-practice/`，先在这里练，不污染主项目。
+
+#### 4.3.1 初始化仓库
 
 ```bash
-# 进入练习目录
+# cd：change directory，切换当前目录
+# 后面的路径是 git-practice 的绝对路径
 cd /root/aiinfra/S0-foundation/W1-environment-and-python/git-practice
 
-# 初始化仓库，并把默认分支命名为 main
+# git init：在当前目录创建一个新的 Git 仓库
+#          执行后会出现隐藏目录 .git/，它保存提交历史、分支、配置等
+# -b main：指定初始分支名为 main
+#          -b 是 --initial-branch 的缩写（Git 2.28+）
+#          不写 -b 时，旧版 Git 默认用 master；新版可能给出提示
+#          如果你的 Git 版本低于 2.28，改用：
+#            git init
+#            git branch -m main
+#          git branch -m main 里的 -m 是 --move，重命名当前分支
 git init -b main
+```
 
-# 查看状态：此时应该提示 README.md 是 untracked
+#### 4.3.2 查看状态、创建文件
+
+```bash
+# git status：显示当前分支，以及三类文件：
+#   1. Changes to be committed：已暂存，下一次 commit 会包含
+#   2. Changes not staged for commit：已跟踪但未暂存
+#   3. Untracked files：Git 还没跟踪的新文件
 git status
 
-# 创建一个自己的文件
+# cat：把标准输入或文件内容输出到标准输出
+# > hello.py：重定向并“覆盖”写入 hello.py
+#             单个 > 是覆盖；>> 是追加
+# <<'PY'：here-document，把接下来的内容作为标准输入，直到单独一行 PY
+#         'PY' 两边的引号表示不做变量替换
+#         如果写成 <<PY（不加引号），$变量 会被 shell 展开
 cat > hello.py <<'PY'
 # 这是 Git 练习用的最小 Python 文件
 # 打印一句话，证明文件内容被正确提交
 print("hello, ai infra")
 PY
 
-# 再次查看状态
+# 再看一次状态：hello.py 应该出现在 Untracked files 里
 git status
+```
 
-# 把 hello.py 加入暂存区
+#### 4.3.3 暂存与提交
+
+```bash
+# git add：把文件的当前内容加入“暂存区/索引”
+# hello.py：要暂存的文件名
+# 注意：git add 不是提交，只是挑选下一次 commit 要包含哪些改动
 git add hello.py
 
-# 查看暂存区状态
+# 再看状态：hello.py 应该出现在 Changes to be committed 里
 git status
 
-# 提交，-m 后面是提交说明
+# git commit：把暂存区的内容生成一个提交（一次快照）
+# -m "..."：在命令行直接提供提交说明
+#           不加 -m 时，Git 会打开默认编辑器让你写说明
+# 提交说明建议写“做了什么”，例如 feat: add hello.py
 git commit -m "feat: add hello.py for git practice"
 
-# 查看提交历史，--oneline 每个提交一行
+# git log：查看提交历史
+# --oneline：每个提交压缩成一行，显示“短哈希 + 提交说明”
 git log --oneline
 ```
 
@@ -446,49 +513,84 @@ git log --oneline
 a1b2c3d (HEAD -> main) feat: add hello.py for git practice
 ```
 
-再练一次修改和差异：
+- `a1b2c3d` 是提交哈希的前 7 位，唯一标识这次提交。
+- `HEAD -> main` 表示当前检出的分支是 `main`。
+- `HEAD` 是指向“当前提交”的指针，切换分支/提交时会移动。
+
+#### 4.3.4 修改文件、查看差异
 
 ```bash
-# 修改文件：把 hello 改成 hello, world
+# sed：stream editor，流编辑器
+# -i：in-place，直接修改原文件（不是只输出到终端）
+#     macOS 自带的 sed 要求写成 -i ''，Linux 不需要
+# 's/hello, ai infra/hello, world/'：substitute 命令
+#     把每行第一个 hello, ai infra 替换成 hello, world
 sed -i 's/hello, ai infra/hello, world/' hello.py
 
-# 查看工作区与暂存区的差异
+# git diff：显示“工作区 vs 暂存区”的差异
+#           也就是还没 git add 的改动
 git diff
 
-# 把修改加入暂存区
+# git add：把修改后的版本重新加入暂存区
 git add hello.py
 
-# 查看暂存区与上一次提交的差异
+# git diff --staged：显示“暂存区 vs 上一次提交”的差异
+# --staged 是 --cached 的同义词
 git diff --staged
 
-# 提交第二次
+# git commit：生成第二次提交
+# -m：提交说明
 git commit -m "docs: update greeting"
 
-# 查看历史
+# git log：查看历史
+# --oneline：一行一个提交
+# --graph：用 ASCII 字符画出分支/合并图
 git log --oneline --graph
 ```
 
-### 4.4 常用命令速查
+---
 
-| 命令 | 作用 |
-|---|---|
-| `git status` | 当前在哪个分支、哪些文件改了/没跟踪 |
-| `git diff` | 工作区 vs 暂存区 |
-| `git diff --staged` | 暂存区 vs 上一次提交 |
-| `git add <file>` | 把文件加入暂存区 |
-| `git add .` | 把当前目录所有改动加入暂存区（注意别把大文件/密钥加进去） |
-| `git commit -m "msg"` | 提交 |
-| `git log --oneline --graph --all` | 看历史 |
-| `git show <hash>` | 看某次提交的具体改动 |
-| `git restore <file>` | 丢弃工作区改动（危险，确认后再用） |
-| `git rm --cached <file>` | 停止跟踪但保留文件 |
-| `git branch` | 查看分支 |
-| `git switch <branch>` | 切换分支 |
-| `git switch -c <branch>` | 新建并切换分支 |
+### 4.4 常用命令速查（每个参数都解释）
 
-### 4.5 `.gitignore`
+| 命令 | 参数解释 | 作用 |
+|---|---|---|
+| `git status` | 无参数 | 看当前分支、暂存区、未暂存、未跟踪文件 |
+| `git status --short` | `--short`：用两列短格式输出 | 紧凑查看状态 |
+| `git add hello.py` | `hello.py`：要加入暂存区的文件 | 暂存单个文件 |
+| `git add .` | `.`：当前目录及子目录 | 暂存当前目录所有改动（先确认没有密钥/大文件） |
+| `git add -A` | `-A`：--all，所有改动（含删除） | 暂存整个仓库的改动 |
+| `git diff` | 无参数 | 工作区 vs 暂存区 |
+| `git diff --staged` | `--staged`：暂存区 vs 最后一次提交 | 看这次要提交什么 |
+| `git commit -m "msg"` | `-m`：message，直接给提交说明 | 提交暂存区 |
+| `git commit --amend` | `--amend`：修改最后一次提交 | 改提交说明/补文件（已推送慎用） |
+| `git log --oneline` | `--oneline`：一行一个提交 | 看简洁历史 |
+| `git log --oneline --graph --all` | `--graph`：画图；`--all`：所有分支 | 看完整分支历史 |
+| `git show <hash>` | `<hash>`：提交哈希 | 看某次提交的具体改动 |
+| `git restore <file>` | `restore`：恢复；`<file>`：目标文件 | 丢弃工作区改动 |
+| `git restore --staged <file>` | `--staged`：只恢复暂存区 | 取消暂存，工作区不变 |
+| `git rm --cached <file>` | `--cached`：只从索引删除，保留工作区文件 | 停止跟踪文件 |
+| `git branch` | 无参数：列出本地分支 | 查看分支 |
+| `git branch -a` | `-a`：--all，含远程分支 | 查看所有分支 |
+| `git switch <branch>` | `<branch>`：目标分支 | 切换分支 |
+| `git switch -c <branch>` | `-c`：--create，新建并切换 | 创建新分支 |
+| `git branch -d <branch>` | `-d`：--delete，仅删除已合并分支 | 删除分支 |
+| `git branch -D <branch>` | `-D`：强制删除未合并分支 | 危险，确认后再用 |
+| `git branch -m <new>` | `-m`：--move，重命名当前分支 | 改分支名 |
+| `git branch -M <new>` | `-M`：强制重命名（覆盖同名） | 把 master 改成 main |
+| `git remote add origin <url>` | `add`：新增；`origin`：远程名；`<url>`：地址 | 关联远程仓库 |
+| `git remote -v` | `-v`：verbose，显示 fetch/push 两个 URL | 查看远程地址 |
+| `git remote set-url origin <url>` | `set-url`：修改远程地址 | 修正写错的 URL |
+| `git push -u origin main` | `-u`：设置上游；`origin`：远程；`main`：分支 | 首次推送并建立跟踪 |
+| `git push` | 无参数：推到已跟踪的上游 | 后续推送 |
+| `git pull --rebase` | `--rebase`：把本地提交重放到远程之后 | 拉取并保持线性历史 |
 
-有些文件不应该进 Git：
+> 记忆方法：`-c` 常见于 create，`-d` 常见于 delete，`-m` 常见于 message/move（看命令语境），`-u` 是 set-upstream，`-v` 是 verbose，`-a`/`-A` 是 all。
+
+---
+
+### 4.5 `.gitignore`：哪些文件不该进 Git
+
+有些文件不应该提交：
 
 - 虚拟环境 `.venv/`
 - Python 缓存 `__pycache__/`、`*.pyc`
@@ -499,11 +601,15 @@ git log --oneline --graph
 在仓库根目录创建 `.gitignore`：
 
 ```gitignore
-# Python 字节码缓存
+# 匹配所有名为 __pycache__ 的目录
+# 末尾的 / 表示只匹配目录，不匹配同名文件
 __pycache__/
+
+# * 匹配任意字符；[cod] 匹配 c、o、d 中的任意一个
+# 所以能匹配 .pyc / .pyo / .pyd
 *.py[cod]
 
-# 虚拟环境
+# 匹配 .venv/ 和 venv/ 目录
 .venv/
 venv/
 
@@ -519,57 +625,297 @@ venv/
 *.tmp
 *.log
 
-# 数据与密钥（按需）
+# 只忽略 data/ 下的 .tmp 文件
 data/*.tmp
+
+# 密钥/证书：绝对不要提交
 .env
 *.pem
 ```
 
+`.gitignore` 的规则：
+
+- 只对“尚未被 Git 跟踪”的文件生效。
+- 已经被跟踪的文件，即使写进 `.gitignore`，仍然会被继续跟踪；必须先 `git rm --cached`。
+- `#` 开头是注释；`!` 开头表示取反（例外）。
+
 已经不小心 `git add` 了怎么办：
 
 ```bash
-# 从暂存区移除，但保留工作区文件
+# git rm：从 Git 中移除文件
+# --cached：只从索引/暂存区移除，保留工作区文件
+# .env：目标文件
 git rm --cached .env
 
 # 如果整个目录已经提交过，先加到 .gitignore，再移除跟踪
+# -r：recursive，递归处理目录下所有文件
+# --cached：只删索引记录，不删磁盘文件
 git rm -r --cached .venv
+
+# 提交这次“停止跟踪”的改动
 git commit -m "chore: stop tracking .venv"
 ```
 
+---
+
 ### 4.6 在真实学习仓库里初始化 Git
 
-练习完 `git-practice/` 后，回到 `/root/aiinfra`，把整个学习仓库纳入 Git：
+练习完 `git-practice/` 后，回到 `/root/aiinfra`，把整个学习仓库纳入 Git。
+
+> 如果 `/root/aiinfra` 已经是 Git 仓库（`git status` 能输出 `On branch main`），跳过 `git init`，直接看 4.7。
 
 ```bash
+# cd：切换到学习仓库根目录
 cd /root/aiinfra
 
-# 初始化仓库
+# git init：创建仓库
+# -b main：初始分支名为 main（-b = --initial-branch）
+# 如果 Git 版本低于 2.28：
+#   git init
+#   git branch -m main   # -m = --move，把当前分支重命名为 main
 git init -b main
 
-# 先看会提交哪些东西；确认没有 .venv、密钥、大文件
+# git status：先看会提交哪些东西
+# 确认没有 .venv/、密钥、模型权重、大文件
 git status
 
-# 添加所有学习材料
+# git add .：把当前目录及子目录的所有未忽略改动加入暂存区
+# . 表示当前目录；.gitignore 里的文件会被跳过
 git add .
 
-# 第一次提交
+# git commit：生成第一次提交
+# -m：提交说明；写清楚这次提交做了什么
 git commit -m "chore: 初始化 AI Infra 学习仓库（S0 W1）"
 
-# 确认
+# git log：确认提交成功
+# --oneline：一行一个提交
 git log --oneline
 ```
-
-> 从今天起，每天结束前提交一次。提交信息写“做了什么”，不要写“update”。
 
 常见错误：
 
 | 现象 | 原因 | 解决 |
 |---|---|---|
-| `fatal: not a git repository` | 当前目录不是仓库 | `cd` 到仓库根目录，或 `git init` |
-| `nothing to commit, working tree clean` | 没有新改动，或忘了保存文件 | `git status` 确认 |
-| `Please tell me who you are` | 没配 user.name/email | 执行 4.2 的两条 config |
+| `fatal: not a git repository` | 当前目录不是仓库 | `cd` 到仓库根目录，或 `git init -b main` |
+| `nothing to commit, working tree clean` | 没有新改动，或文件没保存 | `git status` 确认 |
+| `Please tell me who you are` | 没配 `user.name`/`user.email` | 执行 4.2 的两条 `git config` |
 | `error: pathspec ... did not match` | 文件名拼错/路径不对 | `ls` 确认文件名 |
 | 提交里混进了 `.venv` | `git add .` 前没检查 | `git rm -r --cached .venv`，补 `.gitignore` |
+
+---
+
+### 4.7 把本地仓库推送到 GitHub
+
+下面以 `/root/aiinfra` 这个学习仓库为例。你要先有一个 GitHub 账号。
+
+最短路径（前提：SSH key 已加到 GitHub；详细解释见下面各小节）：
+
+```bash
+# origin：远程名；后面换成你的 SSH 地址
+git remote add origin git@github.com:<你的用户名>/<仓库名>.git
+
+# -M：强制把当前分支改名为 main
+git branch -M main
+
+# -u：建立上游跟踪；origin：远程名；main：本地分支
+git push -u origin main
+```
+
+#### 4.7.1 在 GitHub 上创建空仓库
+
+1. 打开 GitHub，点右上角 `+` → `New repository`。
+2. `Repository name` 填一个名字，例如 `aiinfra-learning`。
+3. **不要**勾选 `Add a README file`、`Add .gitignore`、`Choose a license`。
+   - 勾选后远程会先有一个提交，本地推送时容易出现 `non-fast-forward` 或 `unrelated histories`。
+4. 点 `Create repository`。
+5. 复制页面上的 SSH 地址，形如：
+
+   ```text
+   git@github.com:<你的用户名>/<仓库名>.git
+   ```
+
+#### 4.7.2 配置 GitHub 的 SSH key
+
+```bash
+# ssh-keygen：生成 SSH 密钥对
+# -t ed25519：密钥类型；ed25519 比 RSA 更短、更安全
+# -C "your_email@example.com"：给公钥加注释，方便在 GitHub 上辨认
+# 交互提示里直接回车用默认路径；建议设置 passphrase
+ssh-keygen -t ed25519 -C "your_email@example.com"
+
+# cat：打印公钥内容
+# ~/.ssh/id_ed25519.pub：公钥文件；.pub 结尾才是公钥
+# 私钥是 ~/.ssh/id_ed25519（没有 .pub），绝对不能发给别人
+cat ~/.ssh/id_ed25519.pub
+```
+
+如果这台机器已经有 `~/.ssh/id_ed25519`，直接复用它，**不要覆盖**。也可以给 GitHub 单独生成一个：
+
+```bash
+# -f ~/.ssh/id_ed25519_github：file，指定私钥输出路径
+#   对应的公钥会自动生成在 ~/.ssh/id_ed25519_github.pub
+ssh-keygen -t ed25519 -C "your_email@example.com" -f ~/.ssh/id_ed25519_github
+```
+
+复制输出的整行公钥，然后：
+
+1. GitHub 右上角头像 → `Settings`。
+2. 左侧 `SSH and GPG keys` → `New SSH key`。
+3. `Title` 随便写，例如 `aiinfra-server`；`Key type` 选 `Authentication Key`。
+4. 粘贴公钥，点 `Add SSH key`。
+
+测试：
+
+```bash
+# ssh：SSH 客户端
+# -T：不分配伪终端（test only）；GitHub 只用来验证认证，不需要交互 shell
+# git@github.com：GitHub 的 SSH 地址，用户名固定是 git
+ssh -T git@github.com
+```
+
+成功时会看到：
+
+```text
+Hi <你的用户名>! You've successfully authenticated, but GitHub does not provide shell access.
+```
+
+如果 22 端口被网络阻断，可以改用 443 端口：
+
+```bash
+# -p 443：连接 443 端口（HTTPS 端口），绕过对 22 端口的封锁
+# git@ssh.github.com：GitHub 提供的 443 端口 SSH 入口
+ssh -T -p 443 git@ssh.github.com
+```
+
+如果这样能成功，在 `~/.ssh/config` 里加：
+
+```sshconfig
+Host github.com
+    HostName ssh.github.com   # 实际连接的域名
+    Port 443                  # 实际连接的端口
+    User git                  # GitHub SSH 用户名固定是 git
+```
+
+#### 4.7.3 关联远程仓库
+
+```bash
+# 回到学习仓库根目录
+cd /root/aiinfra
+
+# git remote：管理远程仓库
+# add：新增一个远程
+# origin：远程的名字，Git 约定俗成的默认名（可以改，但没必要）
+# git@github.com:<用户名>/<仓库名>.git：SSH 形式的远程地址
+git remote add origin git@github.com:<你的用户名>/<仓库名>.git
+
+# -v：verbose，显示 fetch（拉取）和 push（推送）两个 URL
+git remote -v
+```
+
+如果提示 `remote origin already exists`：
+
+```bash
+# set-url：修改已有远程的 URL，而不是重复添加
+git remote set-url origin git@github.com:<你的用户名>/<仓库名>.git
+```
+
+#### 4.7.4 确认分支名
+
+```bash
+# --show-current：只输出当前分支名
+git branch --show-current
+
+# 如果输出不是 main，把当前分支强制重命名为 main
+# -M：--move --force，强制重命名（会覆盖同名分支）
+#     普通重命名用 -m；这里用 -M 保证一定改成 main
+git branch -M main
+```
+
+#### 4.7.5 首次推送
+
+```bash
+# git push：把本地提交上传到远程
+# -u：--set-upstream，把本地 main 和远程 origin/main 关联起来
+#     以后直接 git push / git pull 就知道默认推/拉到哪
+# origin：远程名
+# main：本地分支名
+git push -u origin main
+```
+
+成功后：
+
+- GitHub 仓库页面能看到你的文件和提交。
+- 本地执行 `git status` 会显示 `Your branch is up to date with 'origin/main'`。
+- `git branch -vv` 会显示本地 `main` 跟踪 `origin/main`。
+  - `-vv`：比 `-v` 更详细，第二个 `v` 会显示上游跟踪关系。
+
+#### 4.7.6 以后的日常提交流程
+
+```bash
+# 1. 看改了什么
+git status
+
+# 2. 把要提交的文件加入暂存区
+# <file> 换成实际文件名；git add . 表示当前目录全部
+git add <file>
+
+# 3. 提交
+# -m：提交说明
+git commit -m "feat: ..."
+
+# 4. 推送到 GitHub
+# 因为前面用了 -u，这里不需要再写 origin main
+git push
+```
+
+如果远程有你本地没有的提交（例如你在网页上改过 README）：
+
+```bash
+# git pull：fetch + 整合远程更新
+# --rebase：把本地提交“重放”到远程最新提交之后
+#           好处是历史保持一条直线，不产生多余的 merge commit
+git pull --rebase
+
+# 如果 rebase 有冲突：
+#   解决冲突 -> git add <file> -> git rebase --continue
+#   --continue：继续执行被冲突暂停的 rebase
+# 想放弃这次 rebase：
+#   git rebase --abort
+#   --abort：中止 rebase，恢复到 rebase 前
+
+git push
+```
+
+#### 4.7.7 常见错误
+
+| 现象 | 原因 | 解决 |
+|---|---|---|
+| `remote origin already exists` | 已经添加过 `origin` | `git remote set-url origin <新地址>` |
+| `Permission denied (publickey)` | 公钥没加到 GitHub，或用的 key 不对 | `ssh -T git@github.com` 测试；重新添加公钥；`ssh-add ~/.ssh/id_ed25519`（把私钥加入 ssh-agent 缓存） |
+| `Support for password authentication was removed` | 用账号密码走 HTTPS | 改用 SSH；或生成 Personal Access Token 当密码 |
+| `Updates were rejected because the remote contains work...` | 远程有你本地没有的提交 | `git pull --rebase origin main`，解决冲突后再 `git push` |
+| `src refspec main does not match any` | 本地没有 `main` 分支或没有提交 | `git branch -M main`；确认 `git log --oneline` 有提交 |
+| `fatal: refusing to merge unrelated histories` | 远程仓库初始化时带了 README/提交 | 新建空仓库重来；或 `git pull --allow-unrelated-histories`（允许合并无关历史） |
+| `Could not read from remote repository` | 远程地址错，或没有权限 | `git remote -v` 检查 URL；确认仓库属于你 |
+| `Host key verification failed` | 服务器重装/网络中间人，known_hosts 里旧指纹不匹配 | 核对 GitHub 指纹后 `ssh-keygen -R github.com` 删除旧记录 |
+| `! [rejected] main -> main (fetch first)` | 远程比本地新 | 先 `git pull --rebase`，再 `git push` |
+
+#### 4.7.8 HTTPS 方式（可选）
+
+如果你暂时不想配 SSH，也可以用 HTTPS：
+
+```bash
+# https://github.com/<用户名>/<仓库名>.git：HTTPS 形式的远程地址
+git remote add origin https://github.com/<用户名>/<仓库名>.git
+
+# GitHub 不再接受账号密码
+# 密码位置填 Personal Access Token（PAT）
+# 生成路径：GitHub Settings -> Developer settings -> Personal access tokens
+# 权限至少勾选 repo；token 只显示一次，别写进代码/命令历史
+git push -u origin main
+```
+
+> 推送前最后检查一遍：`git status` 里不要有 `.env`、私钥、模型权重、`.venv/`。这些东西一旦推到 GitHub，即使删除也可能留在历史里。
 
 ---
 

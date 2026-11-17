@@ -114,6 +114,12 @@ W2 第一天（2026-11-23 周一）开始前，只做一件事：
 
 ```bash
 cd /root/aiinfra/S0-foundation/W1-environment-and-python/project
+
+# python3 -m：把后面的模块当脚本运行（-m = module）
+# unittest：Python 标准库测试框架
+# discover：自动发现测试文件
+# -s tests：start directory，从 tests/ 目录开始找 test_*.py
+# -v：verbose，输出每个测试用例的名称和结果
 python3 -m unittest discover -s tests -v
 ```
 

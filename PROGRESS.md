@@ -39,7 +39,8 @@
 - [ ] 跑通 `scripts/check_env.sh`
 - [ ] 配置 SSH 免密（或确认当前已是免密）
 - [ ] 学会 tmux 新建/分离/重连
-- [ ] `git init` + 第一次 commit
+- [ ] `git init -b main`（`-b` = `--initial-branch`，指定初始分支名）+ 第一次 commit
+- [ ] 按 Day 1 4.7 配置 GitHub SSH，并 `git push -u origin main`
 - [ ] 读完 `day1-ssh-tmux-git.md`
 - [ ] 写三行复盘
 

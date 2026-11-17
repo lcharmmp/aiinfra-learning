@@ -27,16 +27,29 @@
 cd /root/aiinfra/S0-foundation/W1-environment-and-python/project
 
 # 全部测试
+# python3 -m：运行标准库模块（-m = module）
+# unittest：测试框架
+# discover：自动发现测试
+# -s tests：start directory，从 tests/ 开始
+# -v：verbose，输出每个用例
 python3 -m unittest discover -s tests -v
 
 # 语法检查
+# python3 -m compileall：递归编译 .py 检查语法
+# -q：quiet，只输出错误
 python3 -m compileall -q exp_tracker main.py
 
 # 非交互 CLI 冒烟
+# printf：输出 2、5、0 三个菜单选择（\n 是换行）
+# |：管道，把输出作为 python3 的标准输入
+# tail -20：只显示最后 20 行（-20 = 最后 20 行；-n 20 的简写）
 printf '2\n5\n0\n' | python3 main.py | tail -20
 
 # Git 状态
 git status
+
+# --oneline：一行一个提交
+# --decorate：显示分支/标签引用
 git log --oneline --decorate
 ```
 
@@ -155,6 +168,9 @@ def test_record_must_be_object(self):
 跑：
 
 ```bash
+# -m：运行模块；unittest：测试框架
+# discover：自动发现；-s tests：从 tests/ 开始
+# -v：verbose，输出每个用例
 python3 -m unittest discover -s tests -v
 ```
 
@@ -211,8 +227,17 @@ python3 -m unittest discover -s tests -v
 补完后：
 
 ```bash
+# git add：加入暂存区
+# .：当前目录及子目录
 git add .
+
+# git commit：提交
+# -m：提交说明
 git commit -m "refactor: clean up W1 project and add edge-case tests"
+
+# git log：查看历史
+# --oneline：一行一个提交
+# --decorate：显示分支/标签引用
 git log --oneline --decorate
 ```
 

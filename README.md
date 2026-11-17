@@ -85,3 +85,20 @@ bash /root/aiinfra/S0-foundation/W1-environment-and-python/scripts/check_env.sh
 - 验收看交付物，不看课时。
 - 所有代码和实验结果进 Git；数字必须可复现。
 - 连续两天卡同一问题，第三天必须换方法。
+
+---
+
+## 文档约定（现行与后续都遵守）
+
+- **每条 shell 命令都要在注释里拆开解释参数/选项**，不能只写“创建/提交/查看”这种结论。
+- 命令里出现的缩写、短选项、长选项、路径、重定向符、通配符，都要说明含义。
+- 示例：
+
+  ```bash
+  # git init：在当前目录创建 Git 仓库（生成 .git/）
+  # -b main：-b 是 --initial-branch 的缩写，指定初始分支名为 main
+  #          旧版 Git 没有 -b，改用 git init && git branch -m main
+  git init -b main
+  ```
+
+- 不确定的参数先查 `man <命令>` 或 `<命令> --help`，再写进教程。

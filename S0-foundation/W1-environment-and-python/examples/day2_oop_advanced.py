@@ -57,6 +57,8 @@ class Experiment:
     def is_successful(self):
         """只读计算属性：准确率 >= 0.9 视为成功。"""
         return self._accuracy >= 0.9
+    def is_failed(self):
+        return self._accuracy < 0.6
 
     # ------------------------------------------------------------------
     # 普通实例方法：子类可以覆盖
@@ -74,7 +76,7 @@ class Experiment:
     def from_dict(cls, data):
         """cls 是类本身；子类调用时会得到子类。"""
         return cls(
-            name=data["name"],
+            name=data.get("name","david"),
             model=data["model"],
             accuracy=data["accuracy"],
         )
@@ -130,7 +132,13 @@ class TrainingExperiment(Experiment):
             f"{base} | lr={self.learning_rate:g} | "
             f"bs={self.batch_size}"
         )
-
+class BenchmarkExperiment(Experiment):
+    def __init__(self, name, model, accuracy,concurrency):
+        super().__init__()
+        self.concurrency = concurrency
+    def summary(self):
+        base = super().summary()
+        return f'{base} | concurrency={self.concurrency}'
 
 class EvalExperiment:
     """评测实验：用组合持有一个 ModelConfig，而不是继承它。"""
@@ -211,7 +219,7 @@ def main():
     print("=" * 60)
 
     from_dict_exp = Experiment.from_dict(
-        {"name": "from-dict", "model": "Qwen2.5-7B", "accuracy": 0.88}
+        {"namep": "from-dict", "model": "Qwen2.5-7B", "accuracy": 0.88}
     )
     print("from_dict_exp:", repr(from_dict_exp))
     print("format_accuracy:", Experiment.format_accuracy(0.923))

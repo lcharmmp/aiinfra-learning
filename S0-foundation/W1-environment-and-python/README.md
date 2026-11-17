@@ -86,7 +86,8 @@
 - 跑 `scripts/check_env.sh`，记录 Python/Git/tmux/SSH 版本、内存、磁盘。
 - SSH：生成/确认密钥，配置 `~/.ssh/config`，做到免密登录。
 - tmux：新建会话、运行一个长任务、分离、重连。
-- Git：`git init`、`git status`、`git add`、`git commit`，完成第一次提交。
+- Git：`git init -b main`（`-b` = `--initial-branch`，指定初始分支名）、`git status`、`git add`、`git commit`，完成第一次提交。
+- 按 Day 1 的 4.7 节，把仓库推送到 GitHub（建议至少走通一次：SSH key → remote add → push）。
 - Python 类入门：`class`、`__init__`、`self`、实例属性、方法；跑 `examples/day1_class_basics.py`。
 
 **复盘（1h）：**
@@ -94,7 +95,7 @@
 - 记下 SSH/tmux/Git 各一条最容易忘的命令。
 - 把今天的三行写进 `notes/2026-11-16.md` 的“待我填写的笔记”。
 
-**交付：** 环境自检记录 + 第一次 Git commit + 能跑通类示例。
+**交付：** 环境自检记录 + 第一次 Git commit + GitHub 远程仓库（建议）+ 能跑通类示例。
 
 ---
 

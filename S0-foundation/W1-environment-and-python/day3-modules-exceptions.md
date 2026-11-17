@@ -96,6 +96,11 @@ Python 按 `sys.path` 的顺序查找模块。`sys.path` 通常包含：
 查看：
 
 ```bash
+# python3：调用 Python 3 解释器
+# -c "..."：command，直接执行引号里的 Python 代码，不生成 .py 文件
+#   import sys：导入 sys 模块
+#   sys.path：模块搜索路径列表
+#   '\n'.join(...)：用换行符把列表元素拼成一个字符串
 python3 -c "import sys; print('\n'.join(sys.path))"
 ```
 
@@ -214,18 +219,23 @@ ImportError: cannot import name 'X' from partially initialized module 'a'
 cd /root/aiinfra/S0-foundation/W1-environment-and-python/examples
 
 # 方式 1：用 -m 运行包内模块（推荐）
-# Python 会把 day3_modules_demo 当作包加载，相对导入可以工作
+# python3 -m：-m = module，把后面的模块当作脚本运行，并保留包上下文
+# day3_modules_demo.main：包名.模块名
+# 这样相对导入 from .math_utils import ... 才能工作
 python3 -m day3_modules_demo.main
 
 # 方式 2：用 -m 运行整个包
-# Python 会执行包里的 __main__.py
+# 包目录下有 __main__.py 时，python3 -m 包名 会执行它
+# 这里 __main__.py 再调用 main.main()
 python3 -m day3_modules_demo
 
 # 方式 3：故意直接运行包内文件，观察相对导入报错
+# 直接运行脚本时，Python 不知道父包是谁
 # 预期：ImportError: attempted relative import with no known parent package
 python3 day3_modules_demo/main.py
 
-# 方式 4：在 examples 目录下进入 Python 交互环境，练习 import
+# 方式 4：进入 Python 交互环境（REPL）
+# 不带文件名时，python3 进入交互模式，可以逐行执行
 python3
 ```
 
@@ -523,10 +533,23 @@ cli.py ───────▶ service.py ───────▶ storage.py �
 cd /root/aiinfra/S0-foundation/W1-environment-and-python/project
 
 # 看目录
+# find：查找文件/目录
+# .：从当前目录开始
+# -maxdepth 2：最多向下 2 层
+# -type f：只匹配普通文件（f = file；目录是 d）
+# |：管道，把左边输出作为右边输入
+# sort：按字典序排序
 find . -maxdepth 2 -type f | sort
 
 # 只做语法检查，不运行
+# python3 -m：把后面的模块当脚本运行（-m = module）
+# compileall：标准库模块，递归编译 .py 文件检查语法
+# -q：quiet，只输出错误，不打印每个被编译的文件
+# exp_tracker main.py：要检查的包/文件
 python3 -m compileall -q exp_tracker main.py
+
+# echo：输出字符串
+# $?：上一条命令的退出码，0 表示成功，非 0 表示失败
 echo "compileall exit code: $?"
 ```
 

@@ -163,7 +163,11 @@ def summary(self):
 ### 2.7 提交
 
 ```bash
+# git add：把 service.py 加入暂存区
 git add exp_tracker/service.py
+
+# git commit：提交
+# -m：提交说明
 git commit -m "feat: add ExperimentService business logic"
 ```
 
@@ -304,7 +308,12 @@ if __name__ == "__main__":
 ### 3.6 提交
 
 ```bash
+# git add：把两个文件加入暂存区
+# 多个文件名用空格分隔
 git add exp_tracker/cli.py main.py
+
+# git commit：提交
+# -m：提交说明
 git commit -m "feat: add interactive CLI"
 ```
 
@@ -380,9 +389,15 @@ def tearDown(self):
 cd /root/aiinfra/S0-foundation/W1-environment-and-python/project
 
 # 全部测试
+# python3 -m：运行标准库模块（-m = module）
+# unittest：测试框架
+# discover：自动发现测试
+# -s tests：start directory，从 tests/ 开始找 test_*.py
+# -v：verbose，输出每个用例名称和结果
 python3 -m unittest discover -s tests -v
 
 # 单个文件
+# tests.test_models：模块路径；-v：verbose
 python3 -m unittest tests.test_models -v
 ```
 
@@ -448,6 +463,11 @@ python3 main.py
 非交互式快速验证：
 
 ```bash
+# printf：按格式输出字符串
+# '2\n5\n0\n'：依次输出 2、换行、5、换行、0、换行
+#   \n 是换行符
+# |：管道，把 printf 的输出作为 python3 的标准输入
+# python3 main.py：运行菜单程序，自动依次选择 2、5、0
 printf '2\n5\n0\n' | python3 main.py
 ```
 
@@ -477,14 +497,27 @@ git diff
 提交：
 
 ```bash
+# git add：把多个文件加入暂存区
+# 文件名之间用空格分隔
 git add README.md requirements.txt .gitignore data/experiments.json
+
+# git commit：提交
+# -m：提交说明
 git commit -m "docs: add project README and sample data"
 ```
 
 打 tag：
 
 ```bash
+# git tag：管理标签
+# -a：annotated，创建带说明的附注标签
+# v0.1.0：标签名
+# -m：标签说明
 git tag -a v0.1.0 -m "W1 experiment tracker v0.1.0"
+
+# git log：查看历史
+# --oneline：一行一个提交
+# --decorate：显示分支、标签等引用指向
 git log --oneline --decorate
 ```
 

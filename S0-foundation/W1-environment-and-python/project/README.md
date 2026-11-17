@@ -111,23 +111,35 @@ python3 main.py
 ```bash
 cd /root/aiinfra/S0-foundation/W1-environment-and-python/project
 
-# 创建虚拟环境；-m venv 会在 .venv/ 里放一个独立的 Python
+# 创建虚拟环境
+# python3 -m：把后面的模块当脚本运行（-m = module）
+# venv：Python 标准库的虚拟环境模块
+# .venv：虚拟环境目录名（约定用 .venv，已在 .gitignore 里）
 python3 -m venv .venv
 
-# 激活；激活后命令行前面会出现 (.venv)
+# 激活虚拟环境
+# source：在当前 shell 中执行脚本（不是开子进程）
+# .venv/bin/activate：激活脚本路径
+# 激活后命令行前面会出现 (.venv)
 source .venv/bin/activate
 
 # 确认用的是虚拟环境里的 python
+# which：在 PATH 里查找可执行文件的位置
 which python
+
+# --version：打印 Python 版本
 python --version
 
 # 升级 pip（可选）
+# python -m pip：用当前 Python 的 pip 模块
+# install --upgrade pip：安装并升级 pip 本身
 python -m pip install --upgrade pip
 
 # 运行
 python main.py
 
 # 退出虚拟环境
+# deactivate：撤销 activate 设置的环境变量
 deactivate
 ```
 
@@ -139,6 +151,11 @@ deactivate
 cd /root/aiinfra/S0-foundation/W1-environment-and-python/project
 
 # 发现 tests/ 下所有 test_*.py 并运行
+# python3 -m：运行模块（-m = module）
+# unittest：标准库测试框架
+# discover：自动发现测试
+# -s tests：start directory，从 tests/ 开始
+# -v：verbose，输出每个用例
 python3 -m unittest discover -s tests -v
 ```
 
@@ -162,6 +179,9 @@ OK
 ```bash
 cd /root/aiinfra/S0-foundation/W1-environment-and-python/project
 
+# python3：调用解释器
+# -：从标准输入读取脚本（不是从文件）
+# <<'PY'：here-document，直到单独一行 PY；引号表示不做变量替换
 python3 - <<'PY'
 # 用临时文件，不污染 data/experiments.json
 import tempfile
@@ -390,5 +410,9 @@ chore: add sample data and gitignore
 W1 结束时：
 
 ```bash
+# git tag：管理标签
+# -a：annotated，创建带说明的附注标签
+# v0.1.0：标签名
+# -m：标签说明
 git tag -a v0.1.0 -m "W1 experiment tracker v0.1.0"
 ```
