@@ -586,3 +586,193 @@ Day 5 写项目 part2：
 - `cli.py` / `main.py`：菜单、输入校验、错误提示
 - `tests/`：models/storage/service 全部测试
 - 跑通 CLI，补 README，打 `v0.1.0` tag
+
+---
+
+## 10. 复盘问答
+
+> 这些问题来自今天的校验、序列化、原子写入和 smoke test。它们决定项目后面能不能扩展。
+
+### Q1. 为什么校验放在 `Experiment` 里，而不是放在 CLI 里？以后加 Web API 怎么办？
+
+CLI 只是入口之一。以后可能有：
+
+- 批量导入 JSON 的脚本
+- FastAPI/HTTP 接口
+- 定时任务
+- 测试代码
+
+如果校验写在 CLI 里，每个入口都要复制一遍，迟早漏。把规则放在 `Experiment.__init__/validate()`，所有入口共享同一套规则。
+
+```python
+class Experiment:
+    def __init__(self, name, accuracy):
+        self.name = name
+        self.accuracy = accuracy
+        self.validate()
+
+    def validate(self):
+        # 模型自己保证不变量：不管谁创建对象，都必须满足
+        if not self.name:
+            raise ValidationError("name 不能为空")
+        if not 0 <= self.accuracy <= 1:
+            raise ValidationError("accuracy 必须在 0~1")
+```
+
+边界：
+
+- **模型**负责“一条记录是否合法”。
+- **service** 负责“业务用例是否允许”（例如 ID 重复、权限）。
+- **CLI** 负责“用户输入格式是否可解析”（例如 `abc` 转 float）。
+
+### Q2. 为什么 `float()` 失败要包装成 `ValidationError`？什么时候用内置异常？
+
+区分两类错误：
+
+- **程序员错误**：调用方传错类型/违反接口约定，例如 `store.add("not an experiment")`。用 `TypeError`/`ValueError` 等内置异常，暴露 bug。
+- **用户/业务错误**：输入不合法、数据不满足业务规则。用自定义 `ValidationError`，让上层能友好提示。
+
+```python
+try:
+    self.accuracy = float(accuracy)
+except (TypeError, ValueError) as exc:
+    # 用户输入 "abc" 是业务错误，包装成 ValidationError
+    # from exc 保留原始异常，方便调试
+    raise ValidationError(f"accuracy 格式不正确: {exc}") from exc
+```
+
+如果只是内部代码写错（例如把 `None` 传给一个明确要求 `float` 的函数），不要包装成 `ValidationError`；让 `TypeError` 直接暴露，早点修 bug。
+
+### Q3. `to_dict` / `from_dict` 的字段契约怎么演进？新增字段怎么兼容旧 JSON？
+
+把 JSON 当成**外部协议**，不是内部对象。演进原则：
+
+1. 新字段尽量给默认值，保证旧数据能读。
+2. 不要随意改字段名；必须改时做迁移。
+3. 需要强兼容时加 `schema_version`。
+
+```python
+@classmethod
+def from_dict(cls, data):
+    # 新字段用 get + 默认值，旧 JSON 没有这个字段也能读
+    return cls(
+        name=data["name"],
+        accuracy=data["accuracy"],
+        # notes 是后加的字段：旧数据没有就用空字符串
+        notes=data.get("notes", ""),
+    )
+```
+
+如果字段含义变了：
+
+- 加新字段（`accuracy_v2`），旧字段保留一段时间。
+- 写迁移脚本，把旧 JSON 转成新格式。
+- 在 README 记录格式变更。
+
+W1 的 JSON 没有版本字段；如果项目继续演进，建议加：
+
+```json
+{
+  "schema_version": 1,
+  "experiments": []
+}
+```
+
+### Q4. 为什么 `from_dict` 要一次性列出所有缺失字段？工程上怎么收集错误？
+
+如果只报第一个缺失字段，用户要反复试：
+
+```text
+缺少 name -> 补上 -> 又提示缺少 model -> 再补 -> ...
+```
+
+一次性列出更好：
+
+```python
+required = ["name", "model", "learning_rate", "batch_size", "accuracy", "loss"]
+# 列表推导：找出所有缺失的字段
+missing = [field for field in required if field not in data]
+if missing:
+    # join：用逗号连接，输出 "name, model"
+    raise ValidationError(f"缺少字段: {', '.join(missing)}")
+```
+
+更工程化的做法是收集**所有**校验错误，而不是遇到第一个就抛：
+
+```python
+errors = []
+if not name:
+    errors.append("name 不能为空")
+if not 0 <= accuracy <= 1:
+    errors.append("accuracy 必须在 0~1")
+if errors:
+    # 一次返回所有错误，前端/CLI 可以一次展示
+    raise ValidationError("; ".join(errors))
+```
+
+W1 先用“缺字段一次列全 + 单条记录校验”的简单方案；批量导入时再升级成错误列表。
+
+### Q5. `tmp + replace` 真的安全吗？断电、并发、Windows 怎么办？
+
+`Path.replace` 在**同一文件系统内**是原子操作：其他进程要么看到旧文件，要么看到完整的新文件，不会看到写了一半的 JSON。
+
+但它不解决所有问题：
+
+- **断电/崩溃**：操作系统可能还没把数据刷到磁盘。严格场景需要 `fsync` 文件 + 目录，W1 不做。
+- **并发写**：两个进程同时读-改-写，后写的会覆盖先写的（lost update）。W1 是单用户 CLI，可以接受；生产要文件锁或数据库事务。
+- **Windows**：`Path.replace` 在 Windows 上也能替换，但如果目标文件被其他程序占用会失败；需要重试/错误处理。
+- **跨文件系统**：临时文件和目标文件必须在同一目录/同一文件系统，否则 `replace` 可能退化成复制，不是原子操作。
+
+W1 的边界：单用户、小数据、单进程。知道这些限制，比假装“原子写解决一切”更重要。
+
+### Q6. 为什么 `add` 是“先读后写”？并发会不会丢数据？
+
+W1 的实现：
+
+```python
+def add(self, experiment):
+    experiments = self._read_all()      # 1. 读全量
+    experiments.append(experiment)      # 2. 改内存
+    self._write_all(experiments)        # 3. 全量写回
+    return experiment
+```
+
+简单、可读，适合几十~几百条记录。但它有经典的 **read-modify-write race**：
+
+```text
+进程 A 读到 [x]
+进程 B 读到 [x]
+A 写入 [x, a]
+B 写入 [x, b]   # a 丢了
+```
+
+W1 不做并发控制，因为：
+
+- CLI 是单用户、单进程。
+- 数据量小，操作时间短。
+- 引入锁/事务会增加复杂度，超出本周目标。
+
+如果以后要并发：
+
+- 用文件锁（`fcntl`/`portalocker`）。
+- 用 SQLite（自带事务）。
+- 用数据库的唯一约束 + 原子更新。
+
+面试时能说清“当前实现为什么够用、并发下会怎样、怎么升级”，比堆一个半成品锁更有价值。
+
+### Q7. smoke test 和单元测试有什么区别？为什么今天只做 smoke test？
+
+- **smoke test（冒烟测试）**：快速验证“主流程能不能跑通”，不追求覆盖所有分支。今天的 `python3 - <<'PY'` 就是：存一条、读一条、删一条。
+- **单元测试**：针对函数/类的具体行为，覆盖正常路径、边界、异常路径。Day 5 会写。
+
+为什么今天先 smoke：
+
+- Day 4 的目标是“把三层接起来”，先确认没有集成错误（路径、导入、JSON 格式）。
+- 单元测试需要稳定的接口；Day 5 写完 service/cli 后再补，避免测试跟着接口反复改。
+- 工程顺序：先跑通，再测细；但“先跑通”不等于“不测”，Day 5 必须补上。
+
+今天如果 smoke 失败，优先查：
+
+1. `ModuleNotFoundError` → 是否在 `project/` 下运行。
+2. `StorageError` → JSON 是否合法、路径是否正确。
+3. `ValidationError` → 字段是否满足规则。

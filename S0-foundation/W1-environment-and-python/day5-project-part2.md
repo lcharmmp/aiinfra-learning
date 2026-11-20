@@ -554,3 +554,223 @@ Day 6 是补漏日：
 - 写周复盘初稿
 
 不新增功能，只把已有代码变干净、变可靠。
+
+---
+
+## 9. 复盘问答
+
+> 这些问题来自 service、CLI、测试和收尾。重点回答“为什么要分层”“测试怎么信得过”。
+
+### Q1. `service` 很多方法只是透传，为什么还要这一层？什么时候可以删掉？
+
+W1 的 `service` 确实很薄：
+
+```python
+def list_experiments(self):
+    return self.store.list_all()
+```
+
+但它是一个**边界**，以后会长出：
+
+- 权限检查（谁能删）
+- 操作日志（谁在什么时候删了什么）
+- 缓存（避免每次读 JSON）
+- 事务/批量导入
+- 指标统计
+
+如果 CLI 直接调 storage，这些逻辑要么塞进 CLI，要么塞进 storage，最后两侧都变脏。
+
+什么时候可以删：
+
+- 真正的一次性脚本，没有复用/扩展计划。
+- 项目小到“service 永远只是透传”，且你接受以后重构。
+
+工程判断：**为当前需求设计，但给变化留接缝**。W1 的接缝就是 service 层；它很薄，但方向是对的。
+
+### Q2. `cli` 为什么只捕获 `ExperimentTrackerError`？其他异常怎么办？
+
+```python
+try:
+    action(service)
+except ExperimentTrackerError as exc:
+    # 业务异常：打印友好提示，不打印 traceback
+    print(f"操作失败: {exc}")
+```
+
+- `ExperimentTrackerError` 是“用户能理解、能处理”的错误：输入不合法、找不到记录、JSON 损坏。
+- 其他异常（`TypeError`、`AttributeError`、`KeyError`）通常是**程序 bug**，不应该被伪装成“操作失败”。让它们抛出 traceback，你才能定位。
+- 如果这是生产服务，最外层可以捕获所有异常并记录日志，但**不能吞掉**；至少要记录完整 traceback 并返回 500。
+
+W1 是学习项目，选择“业务异常友好提示，程序异常直接暴露”，这是故意的。
+
+### Q3. 为什么用 `unittest` 而不是 pytest？W2 换 pytest 要注意什么？
+
+W1 用 `unittest` 的原因：
+
+- 标准库自带，2C2G 不用装依赖。
+- 让你理解 `TestCase`、`setUp/tearDown`、`assertRaises` 这些基本概念。
+- 面试可能问“你怎么写测试”，标准库足够表达。
+
+pytest 的优势：
+
+- 断言直接写 `assert`，不用 `self.assertEqual`。
+- fixture、参数化、插件生态更好。
+- 更适合大型项目。
+
+W2 迁移时：
+
+- 测试文件命名仍是 `test_*.py`。
+- `unittest` 的测试可以被 pytest 直接运行，通常不用重写。
+- 逐步把 `self.assertX` 改成 `assert`，把 `setUp` 改成 fixture。
+
+不要为了“工具更高级”在 W1 引入 pytest；先把测试思维练出来。
+
+### Q4. 测试为什么要用临时目录？不用会怎样？
+
+如果测试直接用 `project/data/experiments.json`：
+
+- 测试会污染你的真实数据。
+- 测试之间互相影响，顺序变了结果就变。
+- 并行跑测试会互相覆盖。
+- 失败后残留数据，下一次测试可能“假通过”。
+
+临时目录保证隔离：
+
+```python
+def setUp(self):
+    # TemporaryDirectory：创建临时目录，tearDown 时递归删除
+    self.temp_dir = tempfile.TemporaryDirectory()
+    # 每个测试用独立文件
+    self.data_file = Path(self.temp_dir.name) / "experiments.json"
+    self.store = JsonExperimentStore(self.data_file)
+
+def tearDown(self):
+    # cleanup：删除临时目录
+    self.temp_dir.cleanup()
+```
+
+工程原则：**测试不应该依赖外部状态，也不应该留下外部状态**。
+
+### Q5. 测试全绿，但 CLI 仍然报错，怎么排查？
+
+测试覆盖的是 models/storage/service，CLI 还多了：
+
+- `input()` 解析
+- 菜单分支
+- 数据文件路径
+- 异常捕获/打印
+
+分层排查：
+
+```bash
+# 1. 先确认测试本身全绿
+# -m：运行模块；unittest：测试框架
+# discover：自动发现；-s tests：从 tests/ 开始；-v：verbose
+python3 -m unittest discover -s tests -v
+
+# 2. 直接调用 service，绕过 CLI
+# -c：直接执行一段 Python 代码
+python3 -c "from exp_tracker.cli import DEFAULT_DATA_FILE; print(DEFAULT_DATA_FILE)"
+
+# 3. 用管道喂输入，复现 CLI 路径
+# printf 输出 2、5、0；| 把输出作为 main.py 的标准输入
+printf '2\n5\n0\n' | python3 main.py
+```
+
+常见原因：
+
+- `DEFAULT_DATA_FILE` 指向了别处（打印路径确认）。
+- 输入不是数字/范围不对，触发 `ValidationError`。
+- 数据文件被手动改坏，JSON 解析失败。
+
+工程习惯：**单元测试保证逻辑，集成测试/手工冒烟保证入口**；两者都要有。
+
+### Q6. `DEFAULT_DATA_FILE` 为什么用 `__file__` 计算？用 `Path("data/experiments.json")` 会怎样？
+
+`Path("data/experiments.json")` 是**相对当前工作目录**的路径：
+
+- 在 `project/` 下运行，能找到 `project/data/...`。
+- 在 `/root/aiinfra` 下运行，会找 `/root/aiinfra/data/...`，找不到或写错地方。
+
+`__file__` 计算的是“代码文件自己的位置”，与当前工作目录无关：
+
+```python
+# __file__：当前文件路径 .../project/exp_tracker/cli.py
+# .resolve()：转绝对路径
+# .parent：.../project/exp_tracker
+# .parent：.../project
+DEFAULT_DATA_FILE = (
+    Path(__file__).resolve().parent.parent / "data" / "experiments.json"
+)
+```
+
+工程原则：**程序内部引用的资源，用相对于代码文件的路径；用户传入的路径，才用相对于当前目录的路径**。
+
+### Q7. `git tag -a` 和轻量标签有什么区别？tag 要不要推？
+
+- 轻量标签：`git tag v0.1.0`，只是一个指向 commit 的引用。
+- 附注标签：`git tag -a v0.1.0 -m "..."`，带作者、日期、说明，推荐用于版本发布。
+
+```bash
+# -a：annotated，创建附注标签
+# -m：标签说明
+git tag -a v0.1.0 -m "W1 experiment tracker v0.1.0"
+
+# 普通 git push 不会推送标签
+# origin：远程名；v0.1.0：标签名
+git push origin v0.1.0
+
+# 或一次推送所有标签
+# --tags：推送所有本地标签
+git push --tags
+```
+
+什么时候打 tag：
+
+- 一个可交付版本完成（W1 项目 v0.1.0）。
+- 压测报告/简历项目对应的代码状态。
+- 不要在每次 commit 都打 tag；tag 是里程碑，不是提交记录。
+
+团队协作时，tag 命名建议用语义化版本：`v0.1.0`、`v0.2.0`、`v1.0.0`。
+
+### Q8. 测试文件里写 `from ..exp_tracker.errors import ...` 为什么报 `ImportError`？测试应该怎么导入项目代码？
+
+现象：
+
+```text
+ImportError: attempted relative import with no known parent package
+```
+
+原因：相对导入 `..` 需要“包上下文”。在 `project/` 目录下运行：
+
+```bash
+# -m：运行模块；unittest：测试框架
+# discover：自动发现测试；-s tests：从 tests/ 目录开始
+# -v：verbose，输出每个用例
+python3 -m unittest discover -s tests -v
+```
+
+此时 `tests/test_models.py` 被当作顶层模块（或顶层包 `tests`）加载，`..` 想找 `tests` 的父包，但 `project/` 本身不是包，所以失败。
+
+W1 推荐写法：**绝对导入**。
+
+```python
+# 从 project/ 运行时，project/ 在 sys.path 里
+# 所以可以直接导入 exp_tracker 包
+from exp_tracker.errors import ValidationError
+from exp_tracker.models import Experiment
+```
+
+如果你一定要用相对导入，需要让 `project` 成为包，并换一种发现方式：
+
+```bash
+# 在 W1 目录（project 的上一级）运行
+# -s project/tests：从 project/tests 开始发现
+# -t .：top-level directory 设为当前目录
+# 这样模块名是 project.tests.test_models，.. 才能指向 project
+python3 -m unittest discover -s project/tests -t . -v
+```
+
+但这要求 `project/__init__.py` 存在，而且会让项目结构更绕。W1 不推荐；测试统一用绝对导入，和 README 里的运行方式保持一致。
+
+工程原则：**测试的导入方式要和项目的运行方式一致**。项目从 `project/` 根目录运行，测试也从这里运行，使用绝对导入最稳。

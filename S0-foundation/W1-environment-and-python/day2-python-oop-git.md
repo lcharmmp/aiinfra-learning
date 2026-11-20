@@ -1042,3 +1042,217 @@ Day 3 进入“工程化”：
 - [Python 官方教程 · 类](https://docs.python.org/zh-cn/3/tutorial/classes.html)
 - [Pro Git 中文版 · 分支](https://git-scm.com/book/zh/v2/Git-%E5%88%86%E6%94%AF-%E5%88%86%E6%94%AF%E7%AE%80%E4%BB%8B)
 - [Pro Git 中文版 · 撤销操作](https://git-scm.com/book/zh/v2/Git-%E5%9F%BA%E7%A1%80-%E6%92%A4%E9%94%80%E6%93%8D%E4%BD%9C)
+
+---
+
+## 13. 复盘问答
+
+> 这些问题来自今天的自查项和 Git 练习。先自己回答，再看解析。
+
+### Q1. `__repr__` 和 `__str__` 到底怎么选？为什么日志里常用 `%r` 或 `!r`？
+
+- `__repr__`：给**开发者**看，目标是“无歧义、可调试”。容器打印、交互式解释器、日志通常用它。
+- `__str__`：给**用户**看，目标是“可读”。`print(obj)` 优先调用它。
+- 没有 `__str__` 时，`print` 会退回 `__repr__`。
+
+```python
+class Experiment:
+    def __init__(self, name, accuracy):
+        self.name = name
+        self.accuracy = accuracy
+
+    def __repr__(self):
+        # !r：用 repr() 格式化字符串，会带引号，能区分 "abc" 和 abc
+        return f"Experiment(name={self.name!r}, accuracy={self.accuracy!r})"
+
+    def __str__(self):
+        # .1%：百分比，保留 1 位小数
+        return f"{self.name}（准确率 {self.accuracy:.1%}）"
+
+
+exp = Experiment("qwen", 0.923)
+print(repr(exp))   # Experiment(name='qwen', accuracy=0.923)
+print(str(exp))    # qwen（准确率 92.3%）
+```
+
+日志建议：记录对象时用 `repr` 思路，因为你要的是“能看出字段值”，不是“给用户看的漂亮句子”。
+
+### Q2. 为什么 `__eq__` 按 ID 而不是所有字段？ID 相同但内容不同怎么办？
+
+按 ID 比较表达的是**业务身份**：同一条实验记录修改了 accuracy 后，仍然是同一条记录。按所有字段比较会导致“改一个字段就不相等”，不符合业务语义。
+
+```python
+class Experiment:
+    def __init__(self, experiment_id, name, accuracy):
+        self.experiment_id = experiment_id
+        self.name = name
+        self.accuracy = accuracy
+
+    def __eq__(self, other):
+        # 不是同类对象时返回 NotImplemented，让 Python 尝试对方的 __eq__
+        if not isinstance(other, Experiment):
+            return NotImplemented
+        return self.experiment_id == other.experiment_id
+```
+
+如果 ID 相同但内容不同，说明**数据一致性出了问题**，应该在存储层拒绝重复 ID，而不是让 `__eq__` 假装它们相等。项目的 `storage.add()` 就是这样做的。
+
+补充：定义 `__eq__` 后，对象默认不可哈希（不能放进 `set` 或当 dict key）。确实需要时再定义 `__hash__`，例如：
+
+```python
+def __hash__(self):
+    # 哈希也按 ID，保证与 __eq__ 一致
+    return hash(self.experiment_id)
+```
+
+### Q3. 继承和组合的工程判断标准是什么？举一个“看起来像继承其实该组合”的例子。
+
+判断标准：
+
+- **is-a**：子类是父类的一种特化，且子类需要复用父类的行为/多态 → 继承。
+- **has-a**：一个对象持有一个组件，组件可以独立替换 → 组合。
+- 如果只是为了“复用几个字段/函数”，没有“是一种”的关系 → 组合。
+
+反例：
+
+```python
+# 不推荐：EvalExperiment 不是一种 ModelConfig
+class EvalExperiment(ModelConfig):
+    ...
+```
+
+更合理：
+
+```python
+class EvalExperiment:
+    def __init__(self, name, config, accuracy):
+        self.name = name
+        self.config = config      # has-a：持有一个 ModelConfig
+        self.accuracy = accuracy
+```
+
+工程好处：
+
+- `ModelConfig` 可以被多个实验共享。
+- 测试时可以传入一个假的 config 对象。
+- 不会出现“评测实验是一种模型配置”这种语义错误。
+
+### Q4. `@property` 会不会让代码变慢？什么时候不该用？
+
+`@property` 本质是一次函数调用，开销很小；相比 I/O、JSON 解析、模型推理，可以忽略。不该用的场景：
+
+- 属性访问里有**重 I/O**（读文件、发请求）——调用方会以为这是廉价访问。
+- 计算非常重（大矩阵运算）——应该用明确的方法名，例如 `compute_summary()`。
+- 需要传参数的逻辑——property 不能带额外参数，用方法。
+
+setter 里做校验是常见用法：
+
+```python
+class Experiment:
+    def __init__(self, accuracy):
+        self.accuracy = accuracy   # 触发 setter
+
+    @property
+    def accuracy(self):
+        return self._accuracy
+
+    @accuracy.setter
+    def accuracy(self, value):
+        # 校验逻辑集中在入口，所有赋值都会经过这里
+        if not 0 <= value <= 1:
+            raise ValueError("accuracy 必须在 0~1")
+        self._accuracy = float(value)
+```
+
+注意：`_accuracy` 是内部存储；外部通过 `accuracy` 读写，不要直接改 `_accuracy`。
+
+### Q5. `@classmethod` 和 `@staticmethod` 的真实使用场景是什么？为什么工厂方法用 `cls`？
+
+- `@classmethod`：第一个参数是 `cls`，用于**工厂方法**或需要访问类状态的逻辑。子类调用时 `cls` 自动是子类，不需要重写。
+
+  ```python
+  class Experiment:
+      def __init__(self, name, accuracy):
+          self.name = name
+          self.accuracy = accuracy
+
+      @classmethod
+      def from_dict(cls, data):
+          # cls 是调用这个方法的类；子类调用时得到子类
+          return cls(data["name"], data["accuracy"])
+  ```
+
+- `@staticmethod`：不需要 `self`/`cls`，只是逻辑上属于这个类的纯函数。比如格式化、校验。
+
+  ```python
+  class Experiment:
+      @staticmethod
+      def format_accuracy(value):
+          # 与实例无关，只是放在类命名空间里
+          return f"{value:.1%}"
+  ```
+
+选择：
+
+| 需要实例数据 | 需要类/子类 | 用 |
+|---|---|---|
+| 是 | 否 | 实例方法 |
+| 否 | 是 | `@classmethod` |
+| 否 | 否 | `@staticmethod` 或模块级函数 |
+
+如果工具函数和类没有强关系，放模块级函数更简单；不要为了“看起来面向对象”硬塞进类里。
+
+### Q6. `git merge` 和 `git rebase` 有什么区别？团队里怎么选？
+
+- `git merge`：把两条历史合并，产生一个 merge commit（或 fast-forward）。历史真实，但分叉多。
+- `git rebase`：把本地提交“重放”到目标分支最新提交之后，历史变成一条直线。提交哈希会变。
+
+```bash
+# merge：把 feature 合并进当前分支
+# --no-ff：禁止快进，强制生成 merge commit，保留分支历史
+git merge --no-ff feature/add-summary
+
+# rebase：把当前分支的提交重放到 main 之后
+git rebase main
+```
+
+工程规则：
+
+- **不要 rebase 已经推送到共享分支的提交**：哈希变了，别人拉取会冲突。
+- 本地分支整理历史可以用 rebase；合并到 main 用 merge 或团队约定。
+- `git pull --rebase`：拉取远程更新时用 rebase，避免多余的 merge commit。
+
+### Q7. 冲突解决后为什么还要 `git add`？`reset` 和 `revert` 怎么选？
+
+冲突时，Git 把文件标记为 `both modified`，并在文件里写入 `<<<<<<<`、`=======`、`>>>>>>>` 标记。你手动编辑只是改了工作区文件，Git 还不知道“冲突已经解决”。`git add` 是把解决后的版本放入暂存区，告诉 Git“这个文件可以进入合并提交”。
+
+```bash
+# 解决冲突后：把文件标记为已解决
+git add conflict.txt
+
+# 完成合并提交
+# -m：提交说明
+git commit -m "merge: resolve conflict"
+```
+
+放弃这次合并：
+
+```bash
+# --abort：中止 merge，恢复到合并前状态
+git merge --abort
+```
+
+`reset` vs `revert`：
+
+- `reset`：移动当前分支指针，改写本地历史。适合**还没推送**的提交。
+- `revert`：新建一个反向提交，抵消某次提交。适合**已经推送**的提交，因为不改历史。
+
+```bash
+# 撤销最后一次提交，改动留在暂存区
+# --soft：只移动 HEAD；HEAD~1：上一个提交
+git reset --soft HEAD~1
+
+# 安全撤销最后一次提交，生成一条 Revert 提交
+# --no-edit：使用默认提交说明，不打开编辑器
+git revert HEAD --no-edit
+```

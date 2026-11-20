@@ -1244,3 +1244,321 @@ Day 2 会把今天的类“拆开揉碎”：
 - [tmux 入门](https://github.com/tmux/tmux/wiki/Getting-Started)
 
 > 今天不要打开 vLLM / PyTorch / CUDA 的任何教程。主线只有环境 + Python 基础。
+
+---
+
+## 9. 复盘问答
+
+> 这些问题来自今天的自查项和常见卡点。先自己回答，再看解析；答不上来就回到对应小节重读。
+
+### Q1. 为什么把公钥放到服务器，就能免密登录？私钥不是一直在本地吗？
+
+SSH 公钥认证不是“把密码换成一个钥匙文件”，而是**签名验证**：
+
+1. 客户端告诉服务器：我想用某个公钥登录。
+2. 服务器检查这个公钥是否在 `~/.ssh/authorized_keys` 里。
+3. 服务器发一段随机 challenge。
+4. 客户端用**私钥**对 challenge 签名。
+5. 服务器用**公钥**验证签名。
+
+私钥从头到尾不离开你的本地电脑；服务器只拿到公钥和签名。签名每次都不一样，所以抓包也无法重放。
+
+```bash
+# -v：verbose，打印认证过程
+# 如果看到 Authentications that can continue: publickey
+# 以及最后的 Authentication succeeded (publickey)，说明走的是公钥认证
+ssh -v aiinfra
+```
+
+权限为什么重要：
+
+- `~/.ssh` 必须是 `700`：如果组/其他人能写，别人可以往 `authorized_keys` 里加自己的公钥。
+- `authorized_keys` 必须是 `600`：防止别人篡改。
+- 私钥必须是 `600`：防止别人读走。
+
+### Q2. SSH 连不上，怎么系统排查，而不是乱试？
+
+按网络分层排查，从下往上：
+
+```bash
+# 1. 网络层：能不能到服务器
+# -c 4：count，只发 4 个 ICMP 包
+ping -c 4 1.2.3.4
+
+# 2. 端口层：22 端口是否开放
+# -v：verbose；-z：只扫描，不发送数据
+nc -vz 1.2.3.4 22
+
+# 3. SSH 服务层：服务器上 SSH 是否在跑
+# systemctl status：查看服务状态
+systemctl status ssh
+
+# 4. 认证层：看 SSH 握手和认证细节
+# -vvv：比 -v 更详细，输出每一轮协商
+ssh -vvv aiinfra
+
+# 5. 指定私钥，排除 key 选错
+# -i：identity file，指定私钥文件
+ssh -i ~/.ssh/id_ed25519 aiinfra
+```
+
+工程习惯：把每一步的**现象**记下来，而不是只记“连不上”。例如：
+
+```text
+ping 通、22 端口通、ssh -vvv 显示 publickey 被拒
+=> 问题在 authorized_keys 或权限，不在网络
+```
+
+### Q3. tmux 和 `nohup`、`&`、systemd 有什么区别？什么时候用哪个？
+
+- `&`：把命令放到后台，但 SSH 断开时进程仍可能收到 SIGHUP 而退出。
+- `nohup`：忽略 SIGHUP，适合“一次性后台任务”。
+
+  ```bash
+  # nohup：忽略挂断信号
+  # > train.log：标准输出覆盖写入日志
+  # 2>&1：把标准错误(stderr)合并到标准输出(stdout)
+  # &：放到后台
+  nohup python train.py > train.log 2>&1 &
+  ```
+
+- `tmux`：适合**需要交互、需要回看屏幕、需要多窗口**的长任务，例如调试、压测、训练。
+- `systemd`：适合**生产服务**，有开机自启、崩溃重启、日志管理；W1 不需要。
+
+选择：
+
+| 场景 | 工具 |
+|---|---|
+| 跑一次训练/压测，想随时回去看输出 | tmux |
+| 一次性后台脚本，不需要交互 | nohup + `&` |
+| 长期服务、要自动重启 | systemd |
+
+### Q4. `git add` 和 `git commit` 为什么要分开？直接 commit 不行吗？
+
+分开是为了**让提交可控**：
+
+- 你可能同时改了三件事：修 bug、加注释、改配置。
+- 如果直接全部提交，历史里一次 commit 混了三件事，回滚时很难只回滚其中一个。
+- `git add` 让你挑选这次要提交的文件/代码块，`git commit` 再打成快照。
+
+```bash
+# -p：patch，交互式选择每个 hunk（代码块）是否暂存
+# 适合把一个大改动拆成多个小提交
+git add -p exp_tracker/models.py
+
+# -m：message，提供提交说明
+git commit -m "feat: validate accuracy range"
+```
+
+`git commit -a` 可以跳过 `git add`，但它只包含**已跟踪文件**的改动：
+
+```bash
+# -a：--all，自动暂存所有已跟踪文件的修改/删除
+# 注意：新建的未跟踪文件不会被包含
+git commit -a -m "fix: handle empty notes"
+```
+
+工程建议：一次 commit 只做一件事；提交信息写“为什么”，不只写“改了什么”。
+
+### Q5. `git init -b main` 的 `-b` 到底是什么？如果 Git 版本旧怎么办？
+
+- `git init`：创建仓库，生成 `.git/`。
+- `-b main`：`-b` 是 `--initial-branch` 的缩写，指定初始分支名为 `main`。
+- 不写 `-b` 时，旧版 Git 默认 `master`；较新版本可能提示你配置默认名。
+
+```bash
+# 查看 Git 版本
+git --version
+
+# 如果版本 >= 2.28，可以直接用
+git init -b main
+
+# 如果版本 < 2.28：
+git init
+# -m：--move，重命名当前分支为 main
+git branch -m main
+
+# 也可以一次性配置以后 git init 的默认分支名：
+# --global：写入 ~/.gitconfig；init.defaultBranch：配置项；main：值
+git config --global init.defaultBranch main
+```
+
+### Q6. 第一次 commit 后，怎么确认提交内容是对的？
+
+不要只看 `git log` 的一行说明，至少检查四件事：
+
+```bash
+# 1. 当前状态：是否还有未提交/未跟踪文件
+git status
+
+# 2. 提交历史：哈希、作者、说明
+# --oneline：一行一个提交（短哈希 + 说明）
+git log --oneline
+
+# 3. 这次提交改了哪些文件、增删多少行
+# --stat：statistics，显示文件级统计
+# HEAD：当前提交
+git show --stat HEAD
+
+# 4. 当前被 Git 跟踪的文件清单
+git ls-files
+```
+
+如果想看具体 diff：
+
+```bash
+# HEAD~1：上一个提交；HEAD：当前提交
+# diff：比较两个提交的内容
+git diff HEAD~1 HEAD
+```
+
+工程习惯：提交前用 `git diff --staged` 看一遍“这次到底要提交什么”。`--staged` 表示暂存区 vs 上一次提交。
+
+### Q7. 为什么不能提交私钥、`.env`？已经提交了怎么办？
+
+提交后，文件会进入 Git 历史。即使后来删除，历史里仍然能找回；推到 GitHub 后还可能被缓存/索引。正确顺序：
+
+1. **立刻轮换密钥**：把泄露的 token、密码、私钥作废，重新生成。删除文件不能挽回已经泄露的凭据。
+2. 停止跟踪：
+
+   ```bash
+   # --cached：只从索引删除，保留磁盘文件
+   git rm --cached .env
+
+   # -r：recursive，递归处理目录
+   # --cached：只删索引，保留 .venv/ 目录
+   git rm -r --cached .venv
+
+   # -m：提交说明
+   git commit -m "chore: stop tracking secrets"
+   ```
+
+3. 写进 `.gitignore`，防止再次加入。
+4. 如果已经推到远程且影响严重，需要重写历史（`git filter-repo` 等工具）；这会改变所有 commit 哈希，必须和协作者协调。W1 阶段最好的策略是：**一开始就不要提交**。
+
+检查：
+
+```bash
+# 列出被跟踪的文件，筛选敏感后缀
+# |：管道，把 git ls-files 的输出作为 grep 的输入
+# -E：extended regexp，使用扩展正则
+git ls-files | grep -E '\.env|\.pem|id_rsa|id_ed25519'
+```
+
+`grep -E` 使用扩展正则；如果没有任何输出，说明当前没有被跟踪的敏感文件。
+
+### Q8. 为什么 `def collect(x, result=[])` 和类属性 `items = []` 都是坑？工程上怎么写？
+
+这是 Python 里最经典的“可变对象共享”问题。根因是：**默认参数在函数定义时求值一次**，类属性也只在类定义时创建一次；所有调用/所有实例共享同一个列表。
+
+错误写法一：可变默认参数
+
+```python
+# 错误：result=[] 只在函数定义时创建一次
+# 第一次调用返回 [1]，第二次调用会在同一个列表上继续 append
+def collect_bad(x, result=[]):
+    result.append(x)
+    return result
+
+
+print(collect_bad(1))   # [1]
+print(collect_bad(2))   # [1, 2] —— 不是 [2]
+```
+
+正确写法：用 `None` 表示“没有传”
+
+```python
+# 正确：None 是不可变哨兵，每次调用时再创建新列表
+def collect(x, result=None):
+    if result is None:
+        result = []
+    result.append(x)
+    return result
+
+
+print(collect(1))   # [1]
+print(collect(2))   # [2]
+```
+
+如果写类型标注（W2 会系统讲）：
+
+```python
+def collect(x: int, result: list[int] | None = None) -> list[int]:
+    # list[int] | None 表示“列表或 None”
+    if result is None:
+        result = []
+    result.append(x)
+    return result
+```
+
+错误写法二：可变类属性
+
+```python
+class BadCounter:
+    # 错误：items 是类属性，所有实例共享同一个列表
+    items = []
+
+    def add(self, x):
+        self.items.append(x)
+
+
+a = BadCounter()
+b = BadCounter()
+a.add(1)
+print(b.items)   # [1] —— b 也被影响了
+```
+
+正确写法：在 `__init__` 里创建实例属性
+
+```python
+class GoodCounter:
+    def __init__(self):
+        # 每个实例创建自己的列表
+        self.items = []
+
+    def add(self, x):
+        self.items.append(x)
+
+
+a = GoodCounter()
+b = GoodCounter()
+a.add(1)
+print(a.items)   # [1]
+print(b.items)   # [] —— 互不影响
+```
+
+什么时候类属性可以用：
+
+- 不可变值，例如 `default_precision = "fp16"`。
+- 所有实例确实应该共享的常量/配置。
+- 不要用可变容器（list/dict/set）做类属性，除非你明确就是要全局共享。
+
+`dataclass` 的对应写法（W2 会讲）：
+
+```python
+from dataclasses import dataclass, field
+
+
+@dataclass
+class Counter:
+    # default_factory=list：每次创建实例时调用 list()，得到新列表
+    items: list[int] = field(default_factory=list)
+```
+
+工程检查：
+
+```python
+# 快速验证两个对象是否共享状态
+a = GoodCounter()
+b = GoodCounter()
+a.add(1)
+assert b.items == []   # 如果这里失败，说明状态被共享了
+```
+
+记忆：
+
+```text
+可变默认参数 -> 用 None 哨兵，函数内再创建
+可变类属性   -> 放 __init__，每个实例一份
+dataclass    -> 用 field(default_factory=list)
+```

@@ -14,8 +14,8 @@ Experiment 模型的单元测试。
 
 import unittest
 
-from exp_tracker.errors import ValidationError
-from exp_tracker.models import Experiment
+from ..exp_tracker.errors import ValidationError
+from ..exp_tracker.models import Experiment
 
 
 def make_experiment(**overrides):

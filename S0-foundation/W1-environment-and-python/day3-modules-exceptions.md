@@ -611,3 +611,202 @@ Day 4 开始写项目 part1：
 - [Python 官方教程 · 模块](https://docs.python.org/zh-cn/3/tutorial/modules.html)
 - [Python 官方教程 · 错误和异常](https://docs.python.org/zh-cn/3/tutorial/errors.html)
 - [Real Python · Python Exceptions](https://realpython.com/python-exceptions/)
+
+---
+
+## 7. 复盘问答
+
+> 这些问题来自今天的模块、导入、异常和项目骨架。工程里最容易出错的就是“边界”，下面按边界来答。
+
+### Q1. `__init__.py` 到底有什么用？没有它会怎样？`__all__` 影响什么？
+
+`__init__.py` 有两个作用：
+
+1. 标记目录是**常规包**，让 `from package import module` 的行为更可控。
+2. 在包被导入时执行一次，可以用来重新导出常用名字。
+
+```python
+# exp_tracker/__init__.py
+
+# 把常用类提升到包级别
+from .models import Experiment
+from .service import ExperimentService
+
+# __all__ 只影响 `from exp_tracker import *`
+# 不影响显式导入 `from exp_tracker import Experiment`
+__all__ = ["Experiment", "ExperimentService"]
+```
+
+没有 `__init__.py` 时，Python 3.3+ 可以把目录当“命名空间包”导入，但行为更隐晦，工具链（打包、类型检查、IDE）支持也不一致。学习项目统一用常规包。
+
+`__all__` 的常见误解：
+
+- 它**不限制** `from package import SpecificName`。
+- 它只控制 `from package import *` 时导出哪些名字。
+- 它也是文档：告诉读者这个包对外承诺哪些 API。
+
+### Q2. `python3 main.py` 和 `python3 -m package.main` 到底差在哪？为什么相对导入会报错？
+
+关键在 `sys.path[0]` 和“包上下文”。
+
+```bash
+# 方式 A：直接运行文件
+# sys.path[0] = main.py 所在目录
+python3 main.py
+
+# 方式 B：用 -m 运行模块
+# -m：module，把 package.main 当模块加载，并保留包上下文
+# sys.path[0] = 当前工作目录（通常是项目根）
+python3 -m exp_tracker.main
+```
+
+相对导入 `from .models import Experiment` 需要知道“当前包是谁”。直接运行 `main.py` 时，Python 把它当普通脚本，没有父包，所以报：
+
+```text
+ImportError: attempted relative import with no known parent package
+```
+
+工程建议：
+
+- 应用入口用 `main.py` + **绝对导入**（`from exp_tracker.models import ...`）。
+- 包内部模块可以用相对导入，但必须通过 `python3 -m package.module` 或入口文件运行。
+- 不要一会儿绝对、一会儿相对；同一项目保持一致。
+
+### Q3. 绝对导入和相对导入，工程上怎么选？
+
+| 场景 | 建议 |
+|---|---|
+| 应用代码、入口、测试 | 绝对导入，路径清晰，IDE 跳转稳定 |
+| 大型库内部、重构频繁 | 相对导入，移动包时少改 import |
+| 学习项目 / W1 项目 | 统一绝对导入，减少困惑 |
+
+绝对导入：
+
+```python
+from exp_tracker.models import Experiment
+from exp_tracker.errors import ValidationError
+```
+
+相对导入：
+
+```python
+from .models import Experiment
+from ..utils import load_config
+```
+
+注意：相对导入的层级越深越难读；超过两层（`..`）通常说明包结构该调整了。
+
+### Q4. 循环导入的根因是什么？三种修法怎么选？
+
+根因：模块 A 在初始化时导入 B，B 又导入 A，而 A 还没执行完，名字还不存在。
+
+```text
+a.py  import b
+b.py  from a import X   # 此时 a 还没定义 X -> ImportError
+```
+
+修法优先级：
+
+1. **重构职责**：把双方共用的代码移到第三个模块（推荐）。
+2. **延迟导入**：把 import 放进函数内部，等真正调用时再导入（权宜之计）。
+3. **类型检查导入**：只在类型标注时需要，用 `if TYPE_CHECKING:`（W2 类型标注会讲）。
+
+```python
+# 权宜之计：延迟导入
+def build_service():
+    # 只有调用这个函数时才导入，避免模块加载阶段循环
+    from .storage import JsonExperimentStore
+    return JsonExperimentStore("data/experiments.json")
+```
+
+延迟导入的代价：导入错误从启动时推迟到运行时；依赖关系变隐蔽。能重构就不要用它。
+
+### Q5. `except Exception` 和裸 `except` 有什么区别？什么时候应该让异常继续往上抛？
+
+- 裸 `except:` 会捕获 `BaseException`，包括 `KeyboardInterrupt`、`SystemExit`。用户按 Ctrl+C 时你的程序可能不退出。
+- `except Exception:` 只捕获常规异常，至少不会吞掉退出信号。
+- 更好的是捕获**具体异常**：`except ValueError:`、`except StorageError:`。
+
+```python
+# 不推荐：不知道哪里错，也可能吞掉 bug
+try:
+    value = int(text)
+except:
+    value = 0
+
+# 推荐：只处理预期的错误
+try:
+    value = int(text)
+except ValueError:
+    value = 0
+```
+
+什么时候往上抛：
+
+- 当前层不知道怎么处理（例如 storage 不知道怎么向用户展示错误）→ 包装后抛给上层。
+- 当前层能恢复（例如输入格式错，重新询问）→ 当场处理。
+- 程序 bug（例如 `TypeError`、`AttributeError`）→ 不要吞，让它暴露。
+
+### Q6. `raise ... from ...` 的异常链怎么读？日志里怎么保留堆栈？
+
+```python
+class ConfigError(Exception):
+    """配置加载失败。"""
+
+
+def load_config(path):
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except (OSError, json.JSONDecodeError) as exc:
+        # 抛业务异常，同时用 from exc 保留原始原因
+        raise ConfigError(f"无法加载配置: {path}") from exc
+```
+
+捕获后：
+
+```python
+try:
+    load_config("not-exist.json")
+except ConfigError as exc:
+    # exc.__cause__ 是原始异常（FileNotFoundError / JSONDecodeError）
+    print("业务错误:", exc)
+    print("原始原因:", repr(exc.__cause__))
+```
+
+traceback 会显示两段：
+
+```text
+FileNotFoundError: ...
+The above exception was the direct cause of the following exception:
+ConfigError: 无法加载配置: not-exist.json
+```
+
+工程建议：
+
+- 业务异常带上下文（哪个文件、哪条记录、哪个字段）。
+- 原始异常保留在 `__cause__`，不要只写 `raise ConfigError(...)` 丢掉原因。
+- 日志里记录完整 traceback（W2 的 `logging.exception` 会讲）。
+
+### Q7. 为什么 `storage.py` 要把 `OSError`、`JSONDecodeError`、`ValidationError` 都包装成 `StorageError`？会不会丢失信息？
+
+包装的目的不是“隐藏”，而是**统一边界**：
+
+- `service` 和 `cli` 不需要知道底层是 JSON 还是数据库，也不需要 import `json`。
+- 上层只需要捕获 `StorageError`，就能处理“存储不可用/数据损坏”。
+- 原始异常通过 `from exc` 保留，调试时仍然能看到根因。
+
+```python
+try:
+    text = self.data_file.read_text(encoding="utf-8")
+except OSError as exc:
+    # 把文件系统错误包装成业务异常，并保留原始原因
+    raise StorageError(f"读取数据文件失败: {self.data_file}") from exc
+```
+
+什么时候不该包装：
+
+- 程序员错误（例如给 `add()` 传了非 `Experiment` 对象）用 `TypeError`，不要包装成业务异常。
+- 当前层能直接恢复的错误，不需要包装。
+
+工程判断：**跨层边界包装，层内保持具体异常**。`storage` 内部可以捕获具体异常；对 `service` 暴露统一异常。
